@@ -9,8 +9,8 @@
 		"ghcr.io/devcontainers/features/terraform:1": {},
 		"ghcr.io/dhoeric/features/terraform-docs:1": {},
 		"ghcr.io/devcontainers-extra/features/terraform-asdf:2": {},
-		"ghcr.io/devcontainers-extra/features/tfenv-homebrew:1": {},
-		"ghcr.io/davzucky/devcontainers-features-wolfi/python:1": {}
+		"ghcr.io/davzucky/devcontainers-features-wolfi/python:1": {},
+		"ghcr.io/mickeahlinder/devcontainer-features/tfenv:1": {}
 	}
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
