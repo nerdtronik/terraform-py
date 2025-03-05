@@ -5,11 +5,9 @@
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.8-bookworm",
 	"features": {
-		"ghcr.io/devcontainers/features/python:1": {},
 		"ghcr.io/devcontainers/features/terraform:1": {},
 		"ghcr.io/dhoeric/features/terraform-docs:1": {},
 		"ghcr.io/devcontainers-extra/features/terraform-asdf:2": {},
-		"ghcr.io/davzucky/devcontainers-features-wolfi/python:1": {},
 		"ghcr.io/mickeahlinder/devcontainer-features/tfenv:1": {}
 	}
 
