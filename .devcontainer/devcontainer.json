@@ -10,8 +10,10 @@
 		"ghcr.io/devcontainers-extra/features/terraform-asdf:2": {},
 		"ghcr.io/mickeahlinder/devcontainer-features/tfenv:1": {},
 		"ghcr.io/gvatsal60/dev-container-features/pre-commit:1": {},
-		"ghcr.io/devcontainers-extra/features/black:2": {}
-	}
+		"ghcr.io/devcontainers-extra/features/black:2": {},
+		"ghcr.io/devcontainers-extra/features/isort:2": {},
+		"ghcr.io/devcontainers-extra/features/yamllint:2": {}
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
@@ -20,7 +22,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "pip3 install --user -r requirements.txt",
+	"postCreateCommand": "pre-commit run --all"
 
 	// Configure tool-specific properties.
 	// "customizations": {},

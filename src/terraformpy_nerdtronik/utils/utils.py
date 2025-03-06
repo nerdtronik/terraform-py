@@ -1,5 +1,6 @@
-import subprocess
 import shlex
+import subprocess
+
 from .logger import log
 
 
@@ -37,31 +38,53 @@ class CommandResult:
     callback_output: any
     line_callback_output: any
 
-    def __init__(self, success: bool, code: int, stdout: str, stderr: str, callback_output: any, line_callback_output: any):
+    def __init__(
+        self,
+        success: bool,
+        code: int,
+        stdout: str,
+        stderr: str,
+        callback_output: any,
+        line_callback_output: any,
+    ):
         self.success = success
         self.code = code
         self.stdout = stdout
         self.stderr = stderr
-        self.callback_output = callback_output,
+        self.callback_output = (callback_output,)
         self.line_callback_output = line_callback_output
 
 
-def run_command(cmd: list, line_callback=None, callback=None, show_output=True, cwd: str = ".", title: str = "") -> CommandResult:
+def run_command(
+    cmd: list,
+    line_callback=None,
+    callback=None,
+    show_output=True,
+    cwd: str = ".",
+    title: str = "",
+) -> CommandResult:
     if show_output and len(title) > 0:
         log.info(f"Running: {title}")
 
     if isinstance(cmd[0], list):
         cmd[0] = clean_command(cmd[0])
-        proc = subprocess.Popen(cmd[0], stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, cwd=cwd)
+        proc = subprocess.Popen(
+            cmd[0], stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd
+        )
         for _cmd in cmd[1:]:
             _cmd = clean_command(_cmd)
-            proc = subprocess.Popen(_cmd, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, stdin=proc.stdout, cwd=cwd)
+            proc = subprocess.Popen(
+                _cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=proc.stdout,
+                cwd=cwd,
+            )
     else:
         cmd = clean_command(cmd)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, cwd=cwd)
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd
+        )
     stdout = ""
     stderr = ""
     line_callback_result = []
@@ -91,4 +114,11 @@ def run_command(cmd: list, line_callback=None, callback=None, show_output=True, 
     if callback:
         res_callback = callback(stdout, stderr)
 
-    return CommandResult(proc.returncode == 0, proc.returncode, stdout, stderr, res_callback, list(filter(lambda x: x is not None, line_callback_result)))
+    return CommandResult(
+        proc.returncode == 0,
+        proc.returncode,
+        stdout,
+        stderr,
+        res_callback,
+        list(filter(lambda x: x is not None, line_callback_result)),
+    )
