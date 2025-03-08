@@ -1,3 +1,20 @@
+
+class CommandError(Exception):
+    def __init__(self, err: str, code: int, stdout: str, stderr: str):
+        self.code = code
+        self.stdout = stdout
+        self.stderr = stderr
+        self.err = err
+        # Build a detailed error message
+        full_message = ""
+        full_message += f"\nCode: {code}"
+        if len(stdout) > 0:
+            full_message += f"\nStdout:\n{stdout}"
+        full_message += f"\nStderr:\n{stderr}"
+        full_message += f"\nDetails:\n{err}"
+        super().__init__(full_message)
+
+
 class TerraformError(Exception):
     """Base exception class for all Terraform-related errors.
 
@@ -75,3 +92,11 @@ class TerraformGetError(TerraformError):
 
 class TerraformLoginError(TerraformError):
     """Exception raised when 'terraform login' fails."""
+
+
+class TerraformLogoutError(TerraformError):
+    """Exception raised when 'terraform login' fails."""
+
+
+class TerraformFmtError(TerraformError):
+    """Exception raised when 'terraform fmt' fails."""

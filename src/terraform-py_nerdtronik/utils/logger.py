@@ -10,6 +10,7 @@ import sys
 from queue import Empty, Queue
 from threading import Event, Thread
 from time import time
+import atexit
 
 # ANSI escape codes for colors and styles (cross-platform)
 
@@ -156,6 +157,10 @@ class LoggerFormatter(logging.Formatter):
         if self.fmt:
             return super().format(record)
         message = ""
+
+        if record.args["last_log"] is False and record.args["started"] is True:
+            message += "\033[A\033[K"
+
         if self.colors:
             if self._show_date:
                 message += f"{color.BLUE_DARK}{record.args['asctime']}{color.END} "
@@ -176,7 +181,7 @@ class LoggerFormatter(logging.Formatter):
                 message += f"{record.levelname} "
             if self._show_file:
                 message += f"{record.filename}:{record.lineno} "
-        message += f"| {record.getMessage()}"
+        message += f"| {record.msg}"
         return message
 
 
@@ -198,7 +203,7 @@ class Logger:
         self.env = env
         self._tasks = []
         self._end_tasks = []
-        self._log_queue = Queue()  # Queue for log messages
+        self._log_queue = Queue()
         self._animation = ["⠙", "⠘", "⠰", "⠴", "⠤", "⠦", "⠆", "⠃", "⠋", "⠉"]
         self.h_separator = "─"
         self.v_separator = " "
@@ -291,48 +296,95 @@ class Logger:
         if not frame:
             frame = inspect.currentframe().f_back.f_back
 
+        message = self._get_message(*messages)
         # Put the log information into the queue
         now = datetime.datetime.isoformat(datetime.datetime.now())
-        self._log_queue.put((level.upper(), level_value, messages, frame, now))
+        self._log_queue.put_nowait(
+            (level.upper(), level_value, message, frame, now))
 
     def _process_log_queue(self):
         """Processes the log queue in a separate thread."""
-        while not self._stop_event.is_set():
+        animation_index = 0
+        last_message_log = True
+        started = False
+        next_time = datetime.datetime.now()
+        delta = datetime.timedelta(milliseconds=200)
+        while not self._stop_event.is_set() or not self._log_queue.empty():
+            period = datetime.datetime.now()
             try:
-                level_str, level_value, messages, frame, now = self._log_queue.get(
-                    timeout=0.2
-                )
-                filename = (
-                    "/".join(frame.f_code.co_filename.split(os.sep)[-2:])
-                    if frame
-                    else "unknown"
-                )
-                line = frame.f_lineno if frame else 0
+                # Get a task from the queue.  Use a timeout to allow checking _stop_event.
+                num_tasks = len(self._tasks)  # +1 for the current task
+                if num_tasks > 0 and period >= next_time:
+                    next_time += delta
+                    task = self._tasks[0]
+                    message, start_time, now, frame, level_value = (
+                        task["message"],
+                        task["start_time"],
+                        task["now"],
+                        task["frame"],
+                        task["level"],
+                    )
+                    log_message = f"{message} ({num_tasks} bg tasks) {self._animation[animation_index]} ({format_elapsed_time(start_time, time())})"
 
-                message = self._get_message(*messages)
-                # Use standard library logging, but format as before.
-                record = self.logger.makeRecord(
-                    self.env,
-                    level_value,
-                    filename,
-                    line,
-                    message,
-                    ({"asctime": now},),
-                    None,
-                )
-                self.logger.handle(record)
-                if level_str == "EXCEPTION":
-                    raise Exception(message)
-            except Empty:
-                continue  # Check stop_event
+                    self.log("RUNNING", log_message, frame=task["frame"])
+                    # sleep(0.1)
+                    # self.remove_line()
+                    animation_index = (animation_index +
+                                       1) % len(self._animation)
+
+                if len(self._end_tasks) > 0:
+                    for task in self._end_tasks.copy():
+                        self._end_tasks.remove(task)
+                        if task["success"]:
+                            log_level = "COMPLETED"
+                            log_msg = f"{task['message']} ✅ ({format_elapsed_time(task['start_time'], time())}){task['postfix']}"
+                        else:
+                            log_level = "FAILED"
+                            log_msg = f"{task['message']} ❌ ({format_elapsed_time(task['start_time'], time())}){task['postfix']}"
+
+                        self.log(log_level, log_msg, frame=task["frame"])
+
+                if not self._log_queue.empty():
+                    level_str, level_value, message, frame, now = self._log_queue.get(
+                        timeout=0.1)
+                    filename = (
+                        "/".join(frame.f_code.co_filename.split(os.sep)[-2:])
+                        if frame
+                        else "unknown"
+                    )
+                    line = frame.f_lineno if frame else 0
+
+                    # Use standard library logging, but format as before.
+                    log_record = self.logger.makeRecord(
+                        self.env,
+                        level_value,
+                        filename,
+                        line,
+                        message,
+                        ({"asctime": now,
+                         "last_log": last_message_log, "started": started},),
+                        None,
+                    )
+                    self.logger.handle(log_record)
+                    if LOGGER_LEVELS["RUNNING"] == level_value:
+                        last_message_log = False
+                    else:
+                        last_message_log = True
+                    if not started:
+                        started = True
+                    if level_str == "EXCEPTION":
+                        raise Exception(message)
+
             except Exception as e:
-                print(f"Error in _process_log_queue: {e}", file=sys.stderr)
+                print(e)
+                raise e
 
     def _start_log_thread(self):
         """Starts the log processing thread."""
         if self._log_thread is None or not self._log_thread.is_alive():
             self._stop_event.clear()  # Make sure it's clear
-            self._log_thread = Thread(target=self._process_log_queue, daemon=True)
+            self._log_thread = Thread(
+                target=self._process_log_queue, daemon=True)
             self._log_thread.start()
 
     def set_env(self, env: str):
@@ -389,55 +441,6 @@ class Logger:
         frame = inspect.currentframe().f_back
         self.log("EXCEPTION", *messages, frame=frame)
 
-    def _process_task_queue(self):
-        """Processes tasks from the queue and logs their status."""
-        animation_index = 0
-        while not self._stop_event.is_set():
-            try:
-                # Get a task from the queue.  Use a timeout to allow checking _stop_event.
-                if len(self._tasks) == 0:
-                    continue
-                task = self._tasks[-1]
-                # if not started:
-                #     self.remove_line()
-                #     started=True
-                while not self._task_finished.is_set():
-                    task_id, message, start_time = (
-                        task["id"],
-                        task["message"],
-                        task["start_time"],
-                    )
-                    num_tasks = len(self._tasks)  # +1 for the current task
-                    if num_tasks == 0:
-                        break
-                    log_message = f"{message} ({num_tasks} bg tasks) {self._animation[animation_index]} ({format_elapsed_time(start_time, time())})"
-                    # Log the task update (to console via standard logging)
-                    self.log("RUNNING", log_message, frame=task["frame"])
-
-                    animation_index = (animation_index + 1) % len(self._animation)
-                    self._task_finished.wait(0.2)
-                    if self._task_finished.is_set():
-                        break
-                    self.remove_line()
-                self.remove_line()
-                for task in self._end_tasks.copy():
-                    self._end_tasks.remove(task)
-                    if task["success"]:
-                        log_level = "COMPLETED"
-                        log_msg = f"{task['message']} ✅ ({format_elapsed_time(task['start_time'], time())}){task['postfix']}"
-                    else:
-                        log_level = "FAILED"
-                        log_msg = f"{task['message']} ❌ ({format_elapsed_time(task['start_time'], time())}){task['postfix']}"
-
-                    self.log(log_level, log_msg, frame=task["frame"])
-                self._task_finished.clear()
-
-            except Empty:
-                # No tasks in the queue, but thread might not be stopped yet
-                continue
-            except Exception as e:
-                self.logger.exception(f"Error in _process_queue: {e}")
-
     def remove_line(self):
         """Method to remove one line from the command line"""
         print("\033[A\033[K", end="")
@@ -455,24 +458,34 @@ class Logger:
         """Starts a background task, adding it to the queue."""
         start_time = time()
         message = self._get_message(*messages)
-        task_id = hashlib.md5(
-            (message + str(start_time)).encode(), usedforsecurity=False
-        ).hexdigest()
+        try:
+            task_id = hashlib.md5(
+                (message + str(start_time)).encode(), usedforsecurity=False
+            ).hexdigest()
+        except:
+            task_id = hashlib.md5(
+                (message + str(start_time)).encode()
+            ).hexdigest()
         frame = inspect.currentframe().f_back
         task = {
             "id": task_id,
             "message": message,
             "start_time": start_time,
+            "now": datetime.datetime.isoformat(datetime.datetime.now()),
             "frame": frame,
+            "level": LOGGER_LEVELS.get("RUNNING"),
+
         }
+        # Put the log information into the queue
         self._tasks.append(task)
 
-        # Start the processing thread if it's not already running
-        if self._task_thread is None or not self._task_thread.is_alive():
-            self._stop_event.clear()  # Ensure the event is cleared
-            self._task_finished.clear()
-            self._task_thread = Thread(target=self._process_task_queue, daemon=True)
-            self._task_thread.start()
+        # # Start the processing thread if it's not already running
+        # if self._task_thread is None or not self._task_thread.is_alive():
+        #     self._stop_event.clear()  # Ensure the event is cleared
+        #     self._task_finished.clear()
+        #     self._task_thread = Thread(
+        #         target=self._process_task_queue, daemon=True)
+        #     self._task_thread.start()
         return task_id
 
     def finish(self, task_id: str, *messages, success: bool = True):
@@ -496,20 +509,32 @@ class Logger:
         task["success"] = success
         task["frame"] = frame
         self._end_tasks.append(task.copy())
-        self._task_finished.set()
 
     def clear_threads(self) -> None:
         """Stop any running task animation threads."""
         self._stop_event.set()
-        self._task_finished.set()
-        if self._task_thread:
-            self._task_thread.join()
-            self._task_thread = None
+
         if self._log_thread:
             self._log_thread.join()
             self._log_thread = None
         self._stop_event.clear()
-        self._task_finished.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.on_destroy()
+
+    def on_destroy(self):
+        print("Object was destroyed...")
 
 
 log = Logger("default")
+
+
+def __clean__():
+    global log
+    log.clear_threads()
+
+
+atexit.register(__clean__)
