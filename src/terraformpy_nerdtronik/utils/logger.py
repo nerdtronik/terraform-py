@@ -1,56 +1,17 @@
+import datetime
 import hashlib
 import inspect
 import json
+import logging
+import logging.handlers
 import os
 import shutil
 import sys
-from datetime import datetime, timezone
+from queue import Empty, Queue
 from threading import Event, Thread
-from time import sleep, time
+from time import time
 
-LOGGER_LEVELS = {
-    "TRACE": 0,
-    "DEBUG": 1,
-    "INFO": 2,
-    "DONE": 2,
-    "RUNNING": 2,
-    "FAILED": 2,
-    "COMPLETED": 2,
-    "SUCCESS": 3,
-    "WARNING": 4,
-    "ERROR": 5,
-    "CRITICAL": 6,
-    "EXCEPTION": 7,
-}
-
-
-def format_elapsed_time(start_time: float, end_time: float) -> str:
-    """Function to format elapsed time in <h>h, <m>m, <s>s, <ms>ms
-
-    Args:
-        start_time (float): Start time in epoch format
-        end_time (float): Finish time in epoch format
-
-    Returns:
-        str: Formatted elapsed time
-    """
-    elapsed_time = end_time - start_time
-    result = ""
-    hours = int(elapsed_time // 3600)
-    if hours > 0:
-        result += f"{hours}h, "
-    elapsed_time %= 3600
-    minutes = int(elapsed_time // 60)
-    if minutes > 0:
-        result += f"{minutes}min, "
-    elapsed_time %= 60
-    seconds = int(elapsed_time)
-    if seconds > 0:
-        result += f"{seconds}s, "
-    milliseconds = int((elapsed_time - seconds) * 1000)
-    if milliseconds > 0:
-        result += f"{milliseconds}ms"
-    return result
+# ANSI escape codes for colors and styles (cross-platform)
 
 
 class color:
@@ -104,190 +65,378 @@ class color:
 
 
 LOGGER_LEVEL_COLORS = {
-    "TRACE": f"{color.BOLD+color.PURPLE}TRAC{color.END}",
-    "RUNNING": f"{color.BOLD+color.PURPLE}RUNN{color.END}",
-    "DEBUG": f"{color.BOLD+color.CYAN}DEBG{color.END}",
-    "INFO": f"{color.BOLD+color.WHITE}INFO{color.END}",
-    "DONE": f"{color.BOLD+color.GREEN}DONE{color.END}",
-    "SUCCESS": f"{color.BOLD+color.HIGHLIGHTED_GREEN_LIGHT}SUCC{color.END}",
-    "COMPLETED": f"{color.BOLD+color.HIGHLIGHTED_GREEN}COMP{color.END}",
-    "WARNING": f"{color.BOLD+color.YELLOW_DARK}WARN{color.END}",
-    "ERROR": f"{color.BOLD+color.RED}ERRR{color.END}",
-    "FAILED": f"{color.BOLD+color.RED}FAIL{color.END}",
-    "CRITICAL": f"{color.BOLD+color.HIGHLIGHTED_RED}CRIT{color.END}",
-    "EXCEPTION": f"{color.BOLD+color.HIGHLIGHTED_YELLOW}EXCP{color.END}",
+    "TRACE": f"{color.BOLD}{color.PURPLE}TRAC{color.END}",
+    "RUNNING": f"{color.BOLD}{color.PURPLE}RUNN{color.END}",
+    "DEBUG": f"{color.BOLD}{color.CYAN}DEBG{color.END}",
+    "INFO": f"{color.BOLD}{color.WHITE}INFO{color.END}",
+    "DONE": f"{color.BOLD}{color.GREEN}DONE{color.END}",
+    "SUCCESS": f"{color.BOLD}{color.HIGHLIGHTED_GREEN_LIGHT}SUCC{color.END}",
+    "COMPLETED": f"{color.BOLD}{color.HIGHLIGHTED_GREEN}COMP{color.END}",
+    "WARNING": f"{color.BOLD}{color.YELLOW_DARK}WARN{color.END}",
+    "ERROR": f"{color.BOLD}{color.RED}ERRR{color.END}",
+    "FAILED": f"{color.BOLD}{color.HIGHLIGHTED_RED}FAIL{color.END}",
+    "CRITICAL": f"{color.BOLD}{color.HIGHLIGHTED_RED}CRIT{color.END}",
+    "EXCEPTION": f"{color.BOLD}{color.HIGHLIGHTED_YELLOW}EXCP{color.END}",
 }
+
+# Map custom levels to standard logging levels (and define custom levels)
+LOGGER_LEVELS = {
+    "TRACE": logging.DEBUG - 1,  # Below DEBUG
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "DONE": logging.INFO + 1,
+    "RUNNING": logging.INFO + 2,
+    "FAILED": logging.ERROR + 1,
+    "COMPLETED": logging.INFO + 3,
+    "SUCCESS": logging.INFO + 4,  # Above INFO
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+    "EXCEPTION": logging.CRITICAL + 1,  # Above CRITICAL
+}
+
+# Define custom logging levels
+logging.addLevelName(LOGGER_LEVELS["TRACE"], "TRACE")
+logging.addLevelName(LOGGER_LEVELS["SUCCESS"], "SUCCESS")
+logging.addLevelName(LOGGER_LEVELS["EXCEPTION"], "EXCEPTION")
+logging.addLevelName(LOGGER_LEVELS["RUNNING"], "RUNNING")
+logging.addLevelName(LOGGER_LEVELS["FAILED"], "FAILED")
+logging.addLevelName(LOGGER_LEVELS["COMPLETED"], "COMPLETED")
+logging.addLevelName(LOGGER_LEVELS["DONE"], "DONE")
+
+
+def format_elapsed_time(start_time: float, end_time: float) -> str:
+    """Function to format elapsed time in <h>h, <m>m, <s>s, <ms>ms
+
+    Args:
+        start_time (float): Start time in epoch format
+        end_time (float): Finish time in epoch format
+
+    Returns:
+        str: Formatted elapsed time
+    """
+    elapsed_time = end_time - start_time
+    result = ""
+    hours = int(elapsed_time // 3600)
+    if hours > 0:
+        result += f"{hours}h, "
+    elapsed_time %= 3600
+    minutes = int(elapsed_time // 60)
+    if minutes > 0:
+        result += f"{minutes}min, "
+    elapsed_time %= 60
+    seconds = int(elapsed_time)
+    if seconds > 0:
+        result += f"{seconds}s, "
+    milliseconds = int((elapsed_time - int(elapsed_time)) * 1000)
+    if milliseconds > 0:
+        result += f"{milliseconds}ms"
+    return result.rstrip(", ")  # Remove trailing comma and space
+
+
+class LoggerFormatter(logging.Formatter):
+    def __init__(
+        self,
+        fmt: str = None,
+        datefmt: str = None,
+        style="%",
+        validate=True,
+        colors=True,
+        **args,
+    ):
+        super().__init__(fmt, datefmt, style, validate)
+        self._show_level = args.get("level", True)
+        self._show_date = args.get("date", True)
+        self._show_file = args.get("file", True)
+        self._show_env = args.get("env", True)
+        self.colors = colors
+        self.fmt = fmt
+
+    def format(self, record):
+        if self.fmt:
+            return super().format(record)
+        message = ""
+        if self.colors:
+            if self._show_date:
+                message += f"{color.BLUE_DARK}{record.args['asctime']}{color.END} "
+            if self._show_env:
+                message += f"{color.PURPLE}({record.name}){color.END} "
+            if self._show_level:
+                message += (
+                    f"{LOGGER_LEVEL_COLORS.get(record.levelname, record.levelname)} "
+                )
+            if self._show_file:
+                message += f"{color.GREEN_DARK}{record.filename}{color.YELLOW_DARK}:{color.GREEN_DARK}{record.lineno}{color.END} "
+        else:
+            if self._show_date:
+                message += f"{record.args['asctime']} "
+            if self._show_env:
+                message += f"({record.name}) "
+            if self._show_level:
+                message += f"{record.levelname} "
+            if self._show_file:
+                message += f"{record.filename}:{record.lineno} "
+        message += f"| {record.getMessage()}"
+        return message
 
 
 class Logger:
-    """Logger helper to pretty format and follow processes in the background"""
+    """Logger helper to pretty format and follow processes in the background."""
 
-    def __init__(self, env):
-        global logger
+    def __init__(
+        self, env: str, log_file=None, max_log_size_mb=10, backup_count=5, colors=True
+    ):
+        """
+        Initializes the logger.
+
+        Args:
+            env (str): Environment name (e.g., 'dev', 'prod').
+            log_file (str, optional): Path to the log file.  If None, file logging is disabled.
+            max_log_size_mb (int, optional): Maximum log file size in MB (only used if log_file is provided).
+            backup_count (int, optional): Number of backup log files to keep (only used if log_file is provided).
+        """
         self.env = env
-        self.idx = 0
-        self._th_event = Event()
-        self._tasks = {}
-        self._task_thread: Thread = None
-        self._running_task: str = ""
+        self._tasks = []
+        self._end_tasks = []
+        self._log_queue = Queue()  # Queue for log messages
         self._animation = ["⠙", "⠘", "⠰", "⠴", "⠤", "⠦", "⠆", "⠃", "⠋", "⠉"]
         self.h_separator = "─"
         self.v_separator = " "
-        self.level = LOGGER_LEVELS["INFO"]
-        self.sh_file = True
-        self.sh_date = True
-        self.sh_env = True
-        self.sh_level = True
+        self._enable_colors = colors
+        self._log_file = log_file
+        self._max_log_size = max_log_size_mb
+        self._backup_count = backup_count
+        # Configuration flags
+        self.flags = {"file": True, "date": True, "env": True, "level": True}
 
-    def show_file(self):
-        self.sh_file = True
+        # --- Standard Library Logging Setup ---
+        self.logger = logging.getLogger(env)
+        self.logger.setLevel(logging.DEBUG)  # Set the *root* logger to DEBUG
 
-    def hide_file(self):
-        self.sh_file = False
+        # Create a handler that outputs to the console (StreamHandler)
+        self.console_handler = None
+        self.file_handler = None  # Initialize to None
+        # Create a formatter
+        self.file_formatter: LoggerFormatter = None
+        self.formatter: LoggerFormatter = None
+        self._custom_formatters()
 
-    def show_date(self):
-        self.sh_date = True
+        # --- Threading for background tasks and logging ---
+        self._task_thread: Thread = None
+        self._log_thread: Thread = None
+        self._stop_event = Event()  # Use an Event for cleaner thread stopping
+        self._task_finished = Event()
 
-    def hide_date(self):
-        self.sh_date = False
+        self._start_log_thread()
 
-    def show_env(self):
-        self.sh_env = True
+    def _custom_formatters(self):
+        """Formats log messages with colors and additional info."""
+        self.file_formatter = LoggerFormatter(colors=False, **self.flags)
+        self.formatter = LoggerFormatter(colors=True, **self.flags)
 
-    def hide_env(self):
-        self.sh_env = False
+        if self.console_handler is not None:
+            self.logger.removeHandler(self.console_handler)
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(self.formatter)  # Use custom formatter
+        console_handler.setLevel(logging.INFO)  # Default console level
+        self.console_handler = console_handler
+        self.logger.addHandler(self.console_handler)
 
-    def show_level(self):
-        self.sh_level = True
+        if self._log_file:
+            if self.file_handler is not None:
+                self.logger.removeHandler(self.file_handler)
+            file_handler = logging.handlers.RotatingFileHandler(
+                self._log_file,
+                maxBytes=self._max_log_size * 1024 * 1024,  # Convert MB to bytes
+                backupCount=self._backup_count,
+            )
+            file_handler.setFormatter(self.file_formatter)
+            file_handler.setLevel(logging.DEBUG)  # Log everything to file
+            self.file_handler = file_handler
+            self.logger.addHandler(file_handler)
 
-    def hide_level(self):
-        self.sh_level = False
+    def show_file(self, show=True):
+        self.flags["file"] = show
+        self._custom_formatters()
+
+    def show_date(self, show=True):
+        self.flags["date"] = show
+        self._custom_formatters()
+
+    def show_env(self, show=True):
+        self.flags["env"] = show
+        self._custom_formatters()
+
+    def show_level(self, show=True):
+        self.flags["level"] = show
+        self._custom_formatters()
 
     def set_level(self, level: str):
-        """Method to set the level of logging
-
-        Args:
-            level (str): Logger Level
-                        TRACE, DEBUG, INFO,
-                        SUCCESS, WARNING,
-                        ERROR, CRITICAL
-        """
-        self.level = LOGGER_LEVELS[level.upper()]
+        """Set the logging level for the console handler."""
+        level = level.upper()
+        if level not in LOGGER_LEVELS:
+            raise ValueError(f"Invalid log level: {level}")
+        self.console_handler.setLevel(LOGGER_LEVELS[level])
+        self._custom_formatters()
 
     def log(self, level: str, *messages, frame=None):
-        """Main Log method to handle levels and messages join
+        """Logs a message at the specified level.
 
-        Args:
-            level (str): Logger Level
-                        TRACE, DEBUG, INFO,
-                        SUCCESS, WARNING,
-                        ERROR, CRITICAL
-            frame: stack frame
-            *messages: Multiple values to be logged that supports being passed at str()
+        Adds the log entry to the queue for processing in a separate thread.
         """
-        level = level.upper()
-        if LOGGER_LEVELS[level] < self.level:
-            return
+        level_value = LOGGER_LEVELS.get(level.upper())
+        if level_value is None:
+            raise ValueError(f"Invalid log level: {level}")
+
         if not frame:
-            frame = inspect.currentframe().f_back
-            # Get the filename from the frame
-        line = frame.f_lineno
-        filename = "/".join(frame.f_code.co_filename.split(os.sep)[-2:])
+            frame = inspect.currentframe().f_back.f_back
 
-        message = self._get_message(*messages)
-        if self._task_thread:
-            self.remove_line()
-            message += "\n"
-        now = datetime.now(timezone.utc)
-        log_message = ""
-        if self.sh_date:
-            log_message += f"{color.BLUE_DARK+now.isoformat()+color.END} "
-        if self.sh_env:
-            log_message += f"{color.PURPLE}({self.env}){color.END} "
-        if self.sh_level:
-            log_message += f"{LOGGER_LEVEL_COLORS[level]} "
-        if self.sh_file:
-            log_message += f"{color.GREEN_DARK+filename}{color.YELLOW_DARK}:{color.GREEN_DARK+str(line)+color.END} "
+        # Put the log information into the queue
+        now = datetime.datetime.isoformat(datetime.datetime.now())
+        self._log_queue.put((level.upper(), level_value, messages, frame, now))
 
-        log_message += f"| {message}"
+    def _process_log_queue(self):
+        """Processes the log queue in a separate thread."""
+        while not self._stop_event.is_set():
+            try:
+                level_str, level_value, messages, frame, now = self._log_queue.get(
+                    timeout=0.2
+                )
+                filename = (
+                    "/".join(frame.f_code.co_filename.split(os.sep)[-2:])
+                    if frame
+                    else "unknown"
+                )
+                line = frame.f_lineno if frame else 0
 
-        if level.upper() == "EXCEPTION":
-            raise Exception(message)
-        print(log_message)
+                message = self._get_message(*messages)
+                # Use standard library logging, but format as before.
+                record = self.logger.makeRecord(
+                    self.env,
+                    level_value,
+                    filename,
+                    line,
+                    message,
+                    ({"asctime": now},),
+                    None,
+                )
+                self.logger.handle(record)
+                if level_str == "EXCEPTION":
+                    raise Exception(message)
+            except Empty:
+                continue  # Check stop_event
+            except Exception as e:
+                print(f"Error in _process_log_queue: {e}", file=sys.stderr)
+
+    def _start_log_thread(self):
+        """Starts the log processing thread."""
+        if self._log_thread is None or not self._log_thread.is_alive():
+            self._stop_event.clear()  # Make sure it's clear
+            self._log_thread = Thread(target=self._process_log_queue, daemon=True)
+            self._log_thread.start()
 
     def set_env(self, env: str):
-        """Method to set the ENV name used for identifying the logs
-
-        Args:
-            env (str): ENV Name
-        """
         self.env = env
 
     def sep(self):
-        """Method to print an horizontal separator in the console"""
-        if self.level >= 4:
-            return
+        """Prints a horizontal separator."""
         width = shutil.get_terminal_size((80, 20))[0]
-        print(self.h_separator * width)
+        # Use logger to go through the queue
+        self.logger.info(self.h_separator * width)
 
     def _get_message(self, *messages) -> str:
-        """Method to join multiple values into a string that will be logged
-
-        Returns:
-            str: Joined items by Logger.v_separator
-        """
         res = []
         for msg in messages:
-            if type(msg) is dict or type(msg) is list:
+            if isinstance(msg, (dict, list)):  # Use isinstance for type checking
                 res.append(json.dumps(msg))
             else:
                 res.append(str(msg))
         return self.v_separator.join(res)
 
     def trace(self, *messages):
-        """Method to log TRACE level messages"""
         frame = inspect.currentframe().f_back
         self.log("TRACE", *messages, frame=frame)
 
     def debug(self, *messages):
-        """Method to log DEBUG level messages"""
         frame = inspect.currentframe().f_back
         self.log("DEBUG", *messages, frame=frame)
 
     def info(self, *messages):
-        """Method to log INFO level messages"""
         frame = inspect.currentframe().f_back
         self.log("INFO", *messages, frame=frame)
 
     def success(self, *messages):
-        """Method to log SUCCESS level messages"""
         frame = inspect.currentframe().f_back
         self.log("SUCCESS", *messages, frame=frame)
 
     def warn(self, *messages):
-        """Method to log WARNING level messages"""
         frame = inspect.currentframe().f_back
         self.log("WARNING", *messages, frame=frame)
 
     def error(self, *messages):
-        """Method to log ERROR level messages"""
         frame = inspect.currentframe().f_back
         self.log("ERROR", *messages, frame=frame)
 
     def critical(self, *messages):
-        """Method to log CRITICAL level messages"""
         frame = inspect.currentframe().f_back
         self.log("CRITICAL", *messages, frame=frame)
 
     def done(self, *messages):
-        """Method to log DONE level messages"""
         frame = inspect.currentframe().f_back
         self.log("DONE", *messages, frame=frame)
 
     def exception(self, *messages):
-        """Method to log EXCEPTION level messages"""
         frame = inspect.currentframe().f_back
         self.log("EXCEPTION", *messages, frame=frame)
+
+    def _process_task_queue(self):
+        """Processes tasks from the queue and logs their status."""
+        animation_index = 0
+        while not self._stop_event.is_set():
+            try:
+                # Get a task from the queue.  Use a timeout to allow checking _stop_event.
+                if len(self._tasks) == 0:
+                    continue
+                task = self._tasks[-1]
+                # if not started:
+                #     self.remove_line()
+                #     started=True
+                while not self._task_finished.is_set():
+                    task_id, message, start_time = (
+                        task["id"],
+                        task["message"],
+                        task["start_time"],
+                    )
+                    num_tasks = len(self._tasks)  # +1 for the current task
+                    if num_tasks == 0:
+                        break
+                    log_message = f"{message} ({num_tasks} bg tasks) {self._animation[animation_index]} ({format_elapsed_time(start_time, time())})"
+                    # Log the task update (to console via standard logging)
+                    self.log("RUNNING", log_message, frame=task["frame"])
+
+                    animation_index = (animation_index + 1) % len(self._animation)
+                    self._task_finished.wait(0.2)
+                    if self._task_finished.is_set():
+                        break
+                    self.remove_line()
+                self.remove_line()
+                for task in self._end_tasks.copy():
+                    self._end_tasks.remove(task)
+                    if task["success"]:
+                        log_level = "COMPLETED"
+                        log_msg = f"{task['message']} ✅ ({format_elapsed_time(task['start_time'], time())}){task['postfix']}"
+                    else:
+                        log_level = "FAILED"
+                        log_msg = f"{task['message']} ❌ ({format_elapsed_time(task['start_time'], time())}){task['postfix']}"
+
+                    self.log(log_level, log_msg, frame=task["frame"])
+                self._task_finished.clear()
+
+            except Empty:
+                # No tasks in the queue, but thread might not be stopped yet
+                continue
+            except Exception as e:
+                self.logger.exception(f"Error in _process_queue: {e}")
 
     def remove_line(self):
         """Method to remove one line from the command line"""
@@ -302,129 +451,65 @@ class Logger:
         for i in range(num):
             self.remove_line()
 
-    def wait_animation(self, frame):
-        """Method to be called on a thread and log the status of ongoing tasks"""
-        if self.level >= 4:
-            return
-        _animation_index = 0
-        message = ""
-        start_time = time()
-        if len(self._tasks.keys()) > 0:
-            message = self._tasks[self._running_task]["message"]
-            start_time = self._tasks[self._running_task]["start_time"]
-
-        while len(self._tasks.keys()) > 0 and not self._th_event.is_set():
-            self.remove_line()
-            num_tasks = len(self._tasks.keys())
-            if num_tasks == 1:
-                self.log(
-                    "RUNNING",
-                    f"{message} {self._animation[_animation_index]} ({format_elapsed_time(start_time,time())})",
-                    frame=frame,
-                )
-            else:
-                self.log(
-                    "RUNNING",
-                    f"{message} ({num_tasks} tasks running) {self._animation[_animation_index]} ({format_elapsed_time(start_time,time())})",
-                    frame=frame,
-                )
-            if self._th_event.is_set():
-                return
-            sleep(0.1)
-            _animation_index += 1
-            if _animation_index >= len(self._animation):
-                _animation_index = 0
-
     def start(self, *messages) -> str:
-        """Method to start logging a foreground process in the background
-
-        Example:
-        ```
-        # Start your process logging
-        process_id=log.start("This is a long task")
-
-        # Long task here
-
-        # Finish your task passing the results
-        log.finish(process_id,"Optional Message", success=False)
-        ```
-
-        Returns:
-            str: Key of the process to be run
-        """
-        if self.level >= 4:
-            return
+        """Starts a background task, adding it to the queue."""
         start_time = time()
         message = self._get_message(*messages)
-        key = hashlib.md5(message.encode(), usedforsecurity=False).hexdigest()
+        task_id = hashlib.md5(
+            (message + str(start_time)).encode(), usedforsecurity=False
+        ).hexdigest()
         frame = inspect.currentframe().f_back
-        self._tasks[key] = {"message": message, "start_time": start_time}
+        task = {
+            "id": task_id,
+            "message": message,
+            "start_time": start_time,
+            "frame": frame,
+        }
+        self._tasks.append(task)
 
-        if len(self._tasks.keys()) > 1:
-            return key
-        self._running_task = key
-        if not self._task_thread:
-            sys.stdout.write("\n")
-            self._task_thread = Thread(target=self.wait_animation, args=[frame])
+        # Start the processing thread if it's not already running
+        if self._task_thread is None or not self._task_thread.is_alive():
+            self._stop_event.clear()  # Ensure the event is cleared
+            self._task_finished.clear()
+            self._task_thread = Thread(target=self._process_task_queue, daemon=True)
             self._task_thread.start()
-        return key
+        return task_id
 
-    def finish(self, key: str, *messages, success: bool = True):
-        """Method to finish logging running foreground processes in the background (queued)
+    def finish(self, task_id: str, *messages, success: bool = True):
+        """Marks a task as finished and logs the result.
 
-        Note:
-            This will kill the logs of the process' key passed,
-            if there are multiple processes started, the logger will continue showing those
-
-        Args:
-            key (str): Key of the running process
-            *messages: Optional values to be showed under the process' result log
-            success (bool, optional): Tells if the process was successful or not. Defaults to True.
+        Since we're using a queue,  we don't "finish" a specific task by ID.
+        Instead we log a completion message, and the processing thread
+        will eventually clear the queue.
         """
-        if self.level >= 4:
-            return
-        task = self._tasks.pop(key)
-        message = self._get_message(*messages)
-        self._th_event.set()
-        self._task_thread.join()
-        self._th_event.clear()
-
-        self.remove_line()
-
-        postfix = f"\n{message}" if len(message.strip()) > 0 else ""
         frame = inspect.currentframe().f_back
-        if success:
-            self.log(
-                "COMPLETED",
-                f"{task['message']} ✅ ({format_elapsed_time(task['start_time'],time())}){postfix}",
-                frame=frame,
-            )
-        else:
-            self.log(
-                "FAILED",
-                f"{task['message']} ❌ ({format_elapsed_time(task['start_time'],time())}){postfix}",
-                frame=frame,
-            )
+        message = self._get_message(*messages)
+        postfix = f" {message}" if message.strip() else ""
+        # Find the task in the queue by ID and remove it
+        task = list(filter(lambda x: x["id"] == task_id, self._tasks))
+        if len(task) == 0:
+            return
+        task = task[0]
+        self._tasks.remove(task)
+        task["result_message"] = message
+        task["postfix"] = postfix
+        task["success"] = success
+        task["frame"] = frame
+        self._end_tasks.append(task.copy())
+        self._task_finished.set()
 
-        if len(self._tasks.keys()) == 0 and self._task_thread:
-            self._task_thread = None
-            self._running_task = ""
-        else:
-            sys.stdout.write("\n")
-            self._running_task = list(self._tasks.keys())[-1]
-            self._task_thread = Thread(target=self.wait_animation)
-            self._task_thread.start()
-
-    def clear_threads(self):
-        """Method to stop every thread logging foreground processes in the background"""
-        self._th_event.set()
+    def clear_threads(self) -> None:
+        """Stop any running task animation threads."""
+        self._stop_event.set()
+        self._task_finished.set()
         if self._task_thread:
             self._task_thread.join()
-        self._th_event.clear()
+            self._task_thread = None
+        if self._log_thread:
+            self._log_thread.join()
+            self._log_thread = None
+        self._stop_event.clear()
+        self._task_finished.clear()
 
-    def _custom_catch(self, catch):
-        """Method to overload the logger.catch method"""
-        self.clear_threads()
 
-
-log = Logger("env")
+log = Logger("default")

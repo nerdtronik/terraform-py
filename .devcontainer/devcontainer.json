@@ -22,7 +22,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "pre-commit run --all"
+	"postCreateCommand": "alias python3='/usr/local/bin/python';pre-commit run --all"
 
 	// Configure tool-specific properties.
 	// "customizations": {},

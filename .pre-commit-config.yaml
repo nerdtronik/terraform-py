@@ -1,0 +1,172 @@
+---
+repos:
+  ##########################################################
+  # GIT
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: Git - Remove Trailing Whitespace
+      - id: check-merge-conflict
+        name: Git - Check for Merge Conflicts
+      - id: no-commit-to-branch
+        name: Git - Prevent Committing to Principal Branches
+        args: ["--branch", "master"]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.23.3
+    hooks:
+      - id: gitleaks
+        name: Git - Detect hardcoded secrets
+        description: Detect hardcoded secrets using Gitleaks
+        entry: gitleaks git --pre-commit --redact --staged --verbose
+        language: golang
+        pass_filenames: false
+  - repo: https://github.com/rhysd/actionlint
+    ##########################################################
+    # ACTIONS
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+        name: GitHub Actions - Lint workflow files
+        description: Runs actionlint to lint GitHub Actions workflow files
+        language: golang
+        types: ["yaml"]
+        files: ^\.github/workflows/.+\.ya?ml$
+  - repo: https://github.com/google/yamlfmt
+    ##########################################################
+    # YAML
+    rev: v0.15.0
+    hooks:
+      - id: yamlfmt
+        name: YAML - Formatter
+        types: [yaml]
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        name: YAML - Lint
+        description: "Check YAML files for syntax errors"
+        entry: yamllint
+        types: [file, yaml]
+        exclude: ^\.github/workflows/.+\.ya?ml$
+        args:
+          - -c
+          - ./.yamllint
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    ##########################################################
+    # MARKDOWN
+    rev: v0.44.0
+    hooks:
+      - id: markdownlint
+        name: Markdown - Lint Files
+        description: "Checks the style of Markdown files."
+        args:
+          - --disable
+          - MD041
+          - MD013
+          - MD033
+      - id: markdownlint-fix
+        name: Markdown - Format Files
+        description: "Fixes the style of Markdown/Commonmark files."
+        args:
+          - --disable
+          - MD041
+          - MD013
+          - MD033
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    ##########################################################
+    # SHELL
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: Shell - Check
+        types_or:
+          - shell
+          - bash
+          - batch
+          - powershell
+        args:
+          - -e
+          - SC2034
+  - repo: https://github.com/psf/black
+    ##########################################################
+    # PYTHON
+    rev: 25.1.0
+    hooks:
+      - id: black
+        name: Python - Black Formatter
+        description: "Black: The uncompromising Python code formatter"
+        entry: black
+        language: python
+        types_or: [python, pyi]
+        require_serial: true
+  - repo: https://github.com/PyCQA/isort
+    rev: 6.0.0
+    hooks:
+      - id: isort
+        name: Python - Sort imports
+        stages: [pre-commit, pre-merge-commit, pre-push, manual]
+        types_or: [cython, pyi, python]
+        args:
+          - --filter-files
+          - --atomic
+        require_serial: true
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        name: Python - Check Security issues
+        description: "Bandit is a tool for finding common security issues in Python code"
+        types: [python]
+        require_serial: true
+        args:
+          - --confidence-level
+          - medium
+          - --severity-level
+          - medium
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.3.1
+    hooks:
+      - id: autoflake
+        description: "autoflake removes unused imports and unused variables from Python code. It makes use of pyflakes to do this."
+        name: Python - Remove unused imports and variables
+        types: [python]
+        require_serial: true
+        args:
+          - "--in-place"
+          - "--expand-star-imports"
+          - "--remove-duplicate-keys"
+          - "--remove-unused-variables"
+          - --recursive
+          - --ignore-init-module-imports
+          #   - repo: https://github.com/PyCQA/flake8
+          #     rev: 7.1.2
+          #     hooks:
+          #       - id: flake8
+          #         name: Python - Check Style consistency
+          #         description: "`flake8` is a command-line utility for enforcing style consistency across Python projects."
+          #         types: [python]
+          #         require_serial: true
+          #         args:
+          #           - --ignore=E501
+          #           - --exclude=*__init__.py
+          ##########################################################
+  # SECURITY
+  - repo: https://github.com/bridgecrewio/checkov.git
+    rev: 3.2.378 # change to tag or sha
+    hooks:
+      - name: Security - Checkov
+        id: checkov
+        files: "(src|scripts|\\.github).+"
+        types:
+          - python
+          - shell
+          - javascript
+          - yaml
+          - text
+        exclude: "\\.*venv|.+\\.xlsx$|.+\\.png$|__pycache__"
+        args:
+          - --framework
+          - all
+          - --skip-check
+          - CKV_GIT_6,CKV_GIT_5,CKV_TF_1,CKV_TF_2,CKV_GIT_1,CKV2_GIT_1,CKV_SECRET_6,CKV_AWS_158,CKV_AWS_338,CKV2_AWS_65,CKV_AWS_18,CKV2_AWS_62,CKV_AWS_21,CKV_AWS_144,CKV_AWS_145,CKV_GHA_7,CKV2_GHA_1
