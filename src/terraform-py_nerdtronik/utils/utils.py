@@ -3,6 +3,7 @@ import shlex
 import subprocess
 from time import time
 from typing import Any, Callable, List, Optional, Union
+
 from .exceptions import CommandError
 from .logger import log
 
@@ -95,8 +96,7 @@ class CommandResult:
     def raise_for_status(self) -> None:
         """Raise an exception if the command failed."""
         if not self.success:
-            raise CommandError(
-                "Command failed", self.code, self.stdout, self.stderr)
+            raise CommandError("Command failed", self.code, self.stdout, self.stderr)
 
 
 def run_command(
@@ -176,8 +176,7 @@ def run_command(
     except FileNotFoundError as e:
         raise CommandError(e.strerror, 127, "", f"Command not found: {e}")
     except Exception as e:
-        raise CommandError(e.with_traceback(),
-                           proc.returncode, "", proc.stderr.read())
+        raise CommandError(e.with_traceback(), proc.returncode, "", proc.stderr.read())
 
     stdout = ""
     stderr = ""
@@ -238,10 +237,18 @@ def run_command(
     except subprocess.TimeoutExpired as e:
         proc.kill()
         log.error(f"Command timed out after {timeout} seconds")
-        raise CommandError(e.with_traceback(), -1, stdout,
-                           stderr + f"\nCommand timed out after {timeout} seconds")
+        raise CommandError(
+            e.with_traceback(),
+            -1,
+            stdout,
+            stderr + f"\nCommand timed out after {timeout} seconds",
+        )
     except Exception as e:
         proc.kill()
         log.error(f"Exception during command execution: {str(e)}")
-        raise CommandError(e.with_traceback(), -1, stdout,
-                           stderr + f"\nException during execution: {str(e)}")
+        raise CommandError(
+            e.with_traceback(),
+            -1,
+            stdout,
+            stderr + f"\nException during execution: {str(e)}",
+        )

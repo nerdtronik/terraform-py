@@ -2,8 +2,7 @@ import json as _json
 import os
 import re
 import shlex
-from time import time
-from typing import Dict, List, Optional, Union, Any, Callable, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from utils import cmd_to_array, log, run_command
 
@@ -57,7 +56,7 @@ TERRAFORM_ARGS = {
     "write": "-write=",
     "check": "-check",
     "recursive": "-recursive",
-    "raw": "-raw"
+    "raw": "-raw",
 }
 
 
@@ -120,23 +119,22 @@ class Terraform:
 
     def version(self) -> Dict[str, Any]:
         """
-    Retrieve Terraform version information.
+        Retrieve Terraform version information.
 
-    Executes 'terraform version -json' and parses the output to extract
-    version details including major, minor, and patch numbers.
+        Executes 'terraform version -json' and parses the output to extract
+        version details including major, minor, and patch numbers.
 
-    Returns:
-        Dict[str, Any]: A dictionary containing version information with keys:
-            - version: Dict with major, minor, patch version numbers
-            - version_str: Full version string
-            - latest: Boolean indicating if this is the latest version
-            - platform: Platform information
+        Returns:
+            Dict[str, Any]: A dictionary containing version information with keys:
+                - version: Dict with major, minor, patch version numbers
+                - version_str: Full version string
+                - latest: Boolean indicating if this is the latest version
+                - platform: Platform information
 
-    Raises:
-        TerraformVersionError: If unable to retrieve version information
-    """
-        result = run_command(cmd_to_array(
-            "terraform version -json"), show_output=False)
+        Raises:
+            TerraformVersionError: If unable to retrieve version information
+        """
+        result = run_command(cmd_to_array("terraform version -json"), show_output=False)
         if result.success is False:
             raise TerraformVersionError(
                 "Failed to retrieve terrform version", "version", result.stderr
@@ -199,15 +197,15 @@ class Terraform:
     @staticmethod
     def _build_arg(arg: str, value) -> str:
         """
-    Build a formatted command-line argument string for Terraform.
+        Build a formatted command-line argument string for Terraform.
 
-    Args:
-        arg (str): Argument name as defined in TERRAFORM_ARGS
-        value: Value for the argument, can be string, bool, or None
+        Args:
+            arg (str): Argument name as defined in TERRAFORM_ARGS
+            value: Value for the argument, can be string, bool, or None
 
-    Returns:
-        str: Formatted argument string or empty string if the argument should be omitted
-    """
+        Returns:
+            str: Formatted argument string or empty string if the argument should be omitted
+        """
         res = TERRAFORM_ARGS[arg]
         if res[-1] == "=" and value is not None:
             if isinstance(value, bool):
@@ -256,8 +254,7 @@ class Terraform:
         if lock_timeout is not None and lock_timeout > 0:
             args.append(Terraform._build_arg("lock_timeout", lock_timeout))
         elif self._lock_timeout > 0:
-            args.append(Terraform._build_arg(
-                "lock_timeout", self._lock_timeout))
+            args.append(Terraform._build_arg("lock_timeout", self._lock_timeout))
 
         if input is not None:
             args.append(Terraform._build_arg("input", input))
@@ -288,40 +285,38 @@ class Terraform:
         title: Optional[str] = None,
         chdir: Optional[str] = None,
         show_output: bool = True,
-        callback: Optional[Callable[[
-            Optional[str], Optional[str]], Any]] = None,
-        line_callback: Optional[Callable[[
-            Optional[str], Optional[str]], Any]] = None,
+        callback: Optional[Callable[[Optional[str], Optional[str]], Any]] = None,
+        line_callback: Optional[Callable[[Optional[str], Optional[str]], Any]] = None,
     ):
         """Run CLI Terraform command
 
-    This method executes the specified Terraform command with the given arguments
-    and returns the result. It supports callbacks for processing command output.
+        This method executes the specified Terraform command with the given arguments
+        and returns the result. It supports callbacks for processing command output.
 
-    Args:
-        command (list): List of arguments for terraform command
-        title (str, optional): Title of the command to run. Defaults to None.
-        chdir (str, optional): Working directory to run the command in. Defaults to None.
-        show_output (bool, optional): Show command output. Defaults to True.
-        callback (Callable(str,str)->Any, optional): Function to handle command output (stdout,stderr). Defaults to None.
-        line_callback (Callable(str,str)->Any, optional): Function to handle per line command output. Defaults to None.
+        Args:
+            command (list): List of arguments for terraform command
+            title (str, optional): Title of the command to run. Defaults to None.
+            chdir (str, optional): Working directory to run the command in. Defaults to None.
+            show_output (bool, optional): Show command output. Defaults to True.
+            callback (Callable(str,str)->Any, optional): Function to handle command output (stdout,stderr). Defaults to None.
+            line_callback (Callable(str,str)->Any, optional): Function to handle per line command output. Defaults to None.
 
-    Returns:
-        CommandResult: Result of the command with attributes:
-            - success: Boolean indicating if the command succeeded
-            - stdout: Standard output from the command
-            - stderr: Standard error from the command
-            - callback_output: Output from the callback function if provided
-            - duration: Code runtime duration
+        Returns:
+            CommandResult: Result of the command with attributes:
+                - success: Boolean indicating if the command succeeded
+                - stdout: Standard output from the command
+                - stderr: Standard error from the command
+                - callback_output: Output from the callback function if provided
+                - duration: Code runtime duration
 
-    Example:
-        ```python
-        def process_output(stdout, stderr):
-            return {"processed": stdout}
+        Example:
+            ```python
+            def process_output(stdout, stderr):
+                return {"processed": stdout}
 
-        result = tf.cmd(["show"], callback=process_output)
-        ```
-    """
+            result = tf.cmd(["show"], callback=process_output)
+            ```
+        """
         cmd = ["terraform"]
         cmd.extend(command)
         return run_command(
@@ -406,8 +401,7 @@ class Terraform:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform init", chdir=chdir)
         if result.success:
-            log.success(
-                f"Terraform init completed in: {result.duration} seconds")
+            log.success(f"Terraform init completed in: {result.duration} seconds")
         else:
             raise TerraformInitError(
                 "Failed to initialize terraform project",
@@ -436,8 +430,7 @@ class Terraform:
 
         result = Terraform.cmd(cmd, title="Terraform get", chdir=self.chdir)
         if result.success:
-            log.success(
-                f"Terraform get completed in: {result.duration} seconds")
+            log.success(f"Terraform get completed in: {result.duration} seconds")
         else:
             raise TerraformGetError(
                 "Failed to run terraform get", "get", result.stderr, result.duration
@@ -569,8 +562,7 @@ class Terraform:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform plan", chdir=chdir)
         if result.success:
-            log.success(
-                f"Terraform plan completed in: {result.duration} seconds")
+            log.success(f"Terraform plan completed in: {result.duration} seconds")
         else:
             raise TerraformPlanError(
                 "Failed to run plan terraform", "plan", result.stderr, result.duration
@@ -699,9 +691,7 @@ class Terraform:
             show_output=not json and self._version["version"]["major"] >= 1,
         )
         if result.success:
-            log.success(
-                f"Terraform apply completed in: {result.duration} seconds"
-            )
+            log.success(f"Terraform apply completed in: {result.duration} seconds")
         else:
             raise TerraformApplyError(
                 "Failed to apply changes to state",
@@ -770,8 +760,7 @@ class Terraform:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform destroy", chdir=chdir)
         if result.success:
-            log.success(
-                f"Terraform destroy completed in: {result.duration} seconds")
+            log.success(f"Terraform destroy completed in: {result.duration} seconds")
             return True
         else:
             error_message = f"Failed to destroy terraform resources"
@@ -780,7 +769,7 @@ class Terraform:
                 message=error_message,
                 command=" ".join(cmd),
                 stderr=result.stderr,
-                duration=result.duration
+                duration=result.duration,
             )
 
     def show(self, file: str = None, json=True, color: bool = None, chdir: str = None):
@@ -813,8 +802,7 @@ class Terraform:
             chdir = self.chdir
         result = Terraform.cmd(cmd, chdir=chdir, show_output=False)
         if result.success:
-            log.success(
-                f"Terraform show completed in: {result.duration} seconds")
+            log.success(f"Terraform show completed in: {result.duration} seconds")
         else:
             log.critical(
                 f"Failed to show terraform state in: {result.duration} seconds"
@@ -844,9 +832,7 @@ class Terraform:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform login", chdir=chdir)
         if result.success:
-            log.success(
-                f"Terraform login completed in: {result.duration} seconds"
-            )
+            log.success(f"Terraform login completed in: {result.duration} seconds")
         else:
             raise TerraformLoginError(
                 f"Failed to terraform login to host '{hostname}'",
@@ -865,9 +851,7 @@ class Terraform:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform logout", chdir=chdir)
         if result.success:
-            log.success(
-                f"Terraform logout completed in: {result.duration} seconds"
-            )
+            log.success(f"Terraform logout completed in: {result.duration} seconds")
         else:
             raise TerraformLogoutError(
                 f"Failed to terraform logout to host '{hostname}'",
@@ -878,7 +862,14 @@ class Terraform:
         return result.success
 
     @staticmethod
-    def fmt(chdir: str = ".", list_files: bool = True, diff: bool = False, write: bool = True, check: bool = False, recursive: bool = False):
+    def fmt(
+        chdir: str = ".",
+        list_files: bool = True,
+        diff: bool = False,
+        write: bool = True,
+        check: bool = False,
+        recursive: bool = False,
+    ):
         cmd = ["fmt"]
         cmd.append(Terraform._build_arg("diff", diff))
         cmd.append(Terraform._build_arg("check", check))
@@ -894,10 +885,19 @@ class Terraform:
             log.success(f"Terraform fmt completed in {result.duration}s")
         else:
             raise TerraformFmtError(
-                "Failed to run terraform fmt", "fmt", result.stderr, result.duration)
+                "Failed to run terraform fmt", "fmt", result.stderr, result.duration
+            )
         return result.success
 
-    def fmt(self, list_files: bool = True, diff: bool = False, write: bool = True, check: bool = False, recursive: bool = False, chdir: Optional[str] = None):
+    def fmt(
+        self,
+        list_files: bool = True,
+        diff: bool = False,
+        write: bool = True,
+        check: bool = False,
+        recursive: bool = False,
+        chdir: Optional[str] = None,
+    ):
         cmd = ["fmt"]
 
         cmd.append(Terraform._build_arg("diff", diff))
@@ -915,10 +915,16 @@ class Terraform:
             log.success(f"Terraform fmt completed in {result.duration}s")
         else:
             raise TerraformFmtError(
-                "Failed to run terraform fmt", "fmt", result.stderr, result.duration)
+                "Failed to run terraform fmt", "fmt", result.stderr, result.duration
+            )
         return result.success
 
-    def validate(self, json: Optional[bool] = False, color: Optional[bool] = None, chdir: Optional[str] = None):
+    def validate(
+        self,
+        json: Optional[bool] = False,
+        color: Optional[bool] = None,
+        chdir: Optional[str] = None,
+    ):
         cmd = ["validate"]
 
         if color is False:
@@ -933,15 +939,22 @@ class Terraform:
             log.success(f"Terraform validate completed in {result.duration}s")
         else:
             raise TerraformValidateError(
-                "Failed to run terraform validate", "validate", result.stderr, result.duration)
+                "Failed to run terraform validate",
+                "validate",
+                result.stderr,
+                result.duration,
+            )
         return result.success
 
-    def output(self, output_name: Optional[str] = None,
-               json: Optional[bool] = True,
-               raw: Optional[bool] = None,
-               color: Optional[bool] = None,
-               state: Optional[str] = None,
-               chdir: Optional[str] = None):
+    def output(
+        self,
+        output_name: Optional[str] = None,
+        json: Optional[bool] = True,
+        raw: Optional[bool] = None,
+        color: Optional[bool] = None,
+        state: Optional[str] = None,
+        chdir: Optional[str] = None,
+    ):
         cmd = ["output"]
         log.info(cmd)
         if color is False:
@@ -954,22 +967,25 @@ class Terraform:
             cmd.append(shlex.quote(output_name))
         if not chdir:
             chdir = self.chdir
-        result = Terraform.cmd(cmd, "Terraform output",
-                               chdir, show_output=not json)
+        result = Terraform.cmd(cmd, "Terraform output", chdir, show_output=not json)
         print(result.code)
         if result.success:
             log.success(f"Terraform output completed in {result.duration}s")
         else:
             raise TerraformOutputError(
-                "Failed to run terraform output", "output", result.stderr, result.duration)
+                "Failed to run terraform output",
+                "output",
+                result.stderr,
+                result.duration,
+            )
         if json:
             return _json.loads(result.stdout)
         return result.success
 
-proc=log.start("whole process")
+
+proc = log.start("whole process")
 tf = Terraform(chdir="./tests/terraform")
-vars = {"bucket_name": "test_bucket",
-        "test_variable": {"test1": 1, "test2": None}}
+vars = {"bucket_name": "test_bucket", "test_variable": {"test1": 1, "test2": None}}
 tf.fmt()
 log.info(tf.version())
 log.info(
@@ -985,4 +1001,3 @@ log.info(tf.apply(json=False))
 log.info(tf.output(json=True, output_name="pass"))
 # log.info(tf.destroy(vars=vars))
 log.finish(proc)
-

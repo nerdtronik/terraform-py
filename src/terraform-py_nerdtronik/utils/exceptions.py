@@ -1,4 +1,3 @@
-
 class CommandError(Exception):
     def __init__(self, err: str, code: int, stdout: str, stderr: str):
         self.code = code

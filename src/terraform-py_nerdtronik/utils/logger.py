@@ -1,3 +1,4 @@
+import atexit
 import datetime
 import hashlib
 import inspect
@@ -7,10 +8,9 @@ import logging.handlers
 import os
 import shutil
 import sys
-from queue import Empty, Queue
+from queue import Queue
 from threading import Event, Thread
 from time import time
-import atexit
 
 # ANSI escape codes for colors and styles (cross-platform)
 
@@ -299,8 +299,7 @@ class Logger:
         message = self._get_message(*messages)
         # Put the log information into the queue
         now = datetime.datetime.isoformat(datetime.datetime.now())
-        self._log_queue.put_nowait(
-            (level.upper(), level_value, message, frame, now))
+        self._log_queue.put_nowait((level.upper(), level_value, message, frame, now))
 
     def _process_log_queue(self):
         """Processes the log queue in a separate thread."""
@@ -329,8 +328,7 @@ class Logger:
                     self.log("RUNNING", log_message, frame=task["frame"])
                     # sleep(0.1)
                     # self.remove_line()
-                    animation_index = (animation_index +
-                                       1) % len(self._animation)
+                    animation_index = (animation_index + 1) % len(self._animation)
 
                 if len(self._end_tasks) > 0:
                     for task in self._end_tasks.copy():
@@ -346,7 +344,8 @@ class Logger:
 
                 if not self._log_queue.empty():
                     level_str, level_value, message, frame, now = self._log_queue.get(
-                        timeout=0.1)
+                        timeout=0.1
+                    )
                     filename = (
                         "/".join(frame.f_code.co_filename.split(os.sep)[-2:])
                         if frame
@@ -361,8 +360,13 @@ class Logger:
                         filename,
                         line,
                         message,
-                        ({"asctime": now,
-                         "last_log": last_message_log, "started": started},),
+                        (
+                            {
+                                "asctime": now,
+                                "last_log": last_message_log,
+                                "started": started,
+                            },
+                        ),
                         None,
                     )
                     self.logger.handle(log_record)
@@ -383,8 +387,7 @@ class Logger:
         """Starts the log processing thread."""
         if self._log_thread is None or not self._log_thread.is_alive():
             self._stop_event.clear()  # Make sure it's clear
-            self._log_thread = Thread(
-                target=self._process_log_queue, daemon=True)
+            self._log_thread = Thread(target=self._process_log_queue, daemon=True)
             self._log_thread.start()
 
     def set_env(self, env: str):
@@ -465,7 +468,7 @@ class Logger:
         except:
             task_id = hashlib.md5(
                 (message + str(start_time)).encode()
-            ).hexdigest()
+            ).hexdigest()  # nosec
         frame = inspect.currentframe().f_back
         task = {
             "id": task_id,
@@ -474,7 +477,6 @@ class Logger:
             "now": datetime.datetime.isoformat(datetime.datetime.now()),
             "frame": frame,
             "level": LOGGER_LEVELS.get("RUNNING"),
-
         }
         # Put the log information into the queue
         self._tasks.append(task)
