@@ -523,7 +523,7 @@ class Logger:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.on_destroy()
+        self.clear_threads()
 
     def on_destroy(self):
         print("Object was destroyed...")
