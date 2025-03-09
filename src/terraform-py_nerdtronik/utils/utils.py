@@ -75,28 +75,33 @@ class CommandResult:
         self,
         success: bool,
         code: int,
+        command: str,
         stdout: str,
         stderr: str,
         callback_output: Any,
         line_callback_output: List[Any],
         start_time: float = time(),
+        result: Optional[Any] = None
     ):
         self.success = success
         self.code = code
+        self.command = command
         self.stdout = stdout
         self.stderr = stderr
         self.callback_output = callback_output
         self.line_callback_output = line_callback_output
         self.duration = round(time() - start_time, 4)
+        self.result = result
 
     def __str__(self) -> str:
         """String representation of the command result."""
-        return f"CommandResult(success={self.success}, code={self.code}, stdout_len={len(self.stdout)}, stderr_len={len(self.stderr)}, duration={self.duration}s)"
+        return f"CommandResult(success={self.success}, code={self.code}, command={' '.join(self.command)}, stdout_len={len(self.stdout)}, stderr_len={len(self.stderr)}, duration={self.duration}s)"
 
     def raise_for_status(self) -> None:
         """Raise an exception if the command failed."""
         if not self.success:
-            raise CommandError("Command failed", self.code, self.stdout, self.stderr)
+            raise CommandError("Command failed", self.code,
+                               self.stdout, self.stderr)
 
 
 def run_command(
@@ -147,8 +152,7 @@ def run_command(
                 stderr=subprocess.PIPE,
                 cwd=cwd,
                 env=process_env,
-                text=True,  # Use text mode instead of bytes
-                universal_newlines=True,
+                # universal_newlines=True,
             )
             for _cmd in cmd[1:]:
                 _cmd = clean_command(_cmd)
@@ -159,8 +163,7 @@ def run_command(
                     stdin=proc.stdout,
                     cwd=cwd,
                     env=process_env,
-                    text=True,
-                    universal_newlines=True,
+                    # universal_newlines=True,
                 )
         else:
             cmd = clean_command(cmd)
@@ -170,13 +173,13 @@ def run_command(
                 stderr=subprocess.PIPE,
                 cwd=cwd,
                 env=process_env,
-                text=True,
-                universal_newlines=True,
+                # universal_newlines=True,
             )
     except FileNotFoundError as e:
         raise CommandError(e.strerror, 127, "", f"Command not found: {e}")
     except Exception as e:
-        raise CommandError(e.with_traceback(), proc.returncode, "", proc.stderr.read())
+        raise CommandError(e.with_traceback(),
+                           proc.returncode, "", proc.stderr.read())
 
     stdout = ""
     stderr = ""
@@ -191,31 +194,33 @@ def run_command(
             proc_timeout = None
 
         while True:
-            line = proc.stdout.readline()
-            error_line = proc.stderr.readline()
+            line = proc.stdout.readline().decode("utf-8", errors="ignore")
+            error_line = proc.stderr.readline().decode("utf-8", errors="ignore")
 
             if not line and not error_line:
                 break
-            else:
-                if error_line:
-                    # No need to decode since we're using text mode
-                    stderr += error_line
-                    if show_output:
-                        log.error(error_line.strip())
 
-                if line:
-                    # No need to decode since we're using text mode
-                    stdout += line
-                    if show_output:
-                        log.info(line.strip())
+            # try:
 
-                if line_callback:
-                    try:
-                        result = line_callback(line, error_line)
-                        if result is not None:
-                            line_callback_result.append(result)
-                    except Exception as e:
-                        log.error(e)
+            if error_line:
+                # No need to decode since we're using text mode
+                stderr += error_line
+                if show_output:
+                    log.error(error_line.strip())
+
+            if line:
+                # No need to decode since we're using text mode
+                stdout += line
+                if show_output:
+                    log.info(line.strip())
+
+            if line_callback:
+                try:
+                    result = line_callback(line, error_line)
+                    if result is not None:
+                        line_callback_result.append(result)
+                except Exception as e:
+                    log.error(e)
 
         proc.wait(timeout=proc_timeout)
         res_callback = None
@@ -224,10 +229,11 @@ def run_command(
                 res_callback = callback(stdout, stderr)
             except Exception as e:
                 log.error(e)
-
+        
         return CommandResult(
             proc.returncode == 0,
             proc.returncode,
+            " ".join(clean_command(cmd)),
             stdout,
             stderr,
             res_callback,
@@ -238,7 +244,7 @@ def run_command(
         proc.kill()
         log.error(f"Command timed out after {timeout} seconds")
         raise CommandError(
-            e.with_traceback(),
+            e.cmd,
             -1,
             stdout,
             stderr + f"\nCommand timed out after {timeout} seconds",
@@ -246,8 +252,9 @@ def run_command(
     except Exception as e:
         proc.kill()
         log.error(f"Exception during command execution: {str(e)}")
+        import json
         raise CommandError(
-            e.with_traceback(),
+            json.dumps(e.args),
             -1,
             stdout,
             stderr + f"\nException during execution: {str(e)}",

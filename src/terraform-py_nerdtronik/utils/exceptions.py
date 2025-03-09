@@ -40,7 +40,7 @@ class TerraformError(Exception):
         if duration is not None:
             full_message += f"\nDuration: {duration:.4f}s"
         if stderr:
-            full_message += f"\nDetails: {stderr}"
+            full_message += f"\nDetails:\n{stderr}"
 
         super().__init__(full_message)
 
@@ -99,3 +99,47 @@ class TerraformLogoutError(TerraformError):
 
 class TerraformFmtError(TerraformError):
     """Exception raised when 'terraform fmt' fails."""
+
+
+class TerraformGraphError(TerraformError):
+    """Exception raised when 'terraform graph' fails."""
+
+
+class TerraformImportError(TerraformError):
+    """Exception raised when 'terraform import' fails."""
+
+
+class TerraformRefreshError(TerraformError):
+    """Exception raised when 'terraform refresh' fails."""
+
+
+class TerraformTaintError(TerraformError):
+    """Exception raised when 'terraform taint' fails."""
+
+
+class TerraformUntaintError(TerraformError):
+    """Exception raised when 'terraform untaint' fails."""
+
+
+class TerraformStateError(TerraformError):
+    """Exception raised when 'terraform state' fails."""
+
+
+class TerraformStateListError(TerraformStateError):
+    """Exception raised when 'terraform state list' fails."""
+
+
+class TerraformStateMvError(TerraformStateError):
+    """Exception raised when 'terraform state mv' fails."""
+
+
+class TerraformStateRmError(TerraformStateError):
+    """Exception raised when 'terraform state rm' fails."""
+
+
+class TerraformStatePullError(TerraformStateError):
+    """Exception raised when 'terraform state pull' fails."""
+
+
+class TerraformStateReplaceProviderError(TerraformStateError):
+    """Exception raised when 'terraform state replace-provider' fails."""

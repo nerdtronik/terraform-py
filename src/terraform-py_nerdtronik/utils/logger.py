@@ -1,3 +1,4 @@
+import traceback
 import atexit
 import datetime
 import hashlib
@@ -11,7 +12,6 @@ import sys
 from queue import Queue
 from threading import Event, Thread
 from time import time
-
 # ANSI escape codes for colors and styles (cross-platform)
 
 
@@ -65,6 +65,28 @@ class color:
     WHITE = "\033[97m"
 
 
+__LOGGERS__ = []
+
+
+HANDLE_EXCEPTIONS = True
+
+
+def __catcher(type, value, tback):
+    if HANDLE_EXCEPTIONS:
+        for logger in __LOGGERS__:
+            for line in traceback.format_tb(tback):
+                for ln in line.splitlines():
+                    log.exception(ln, _raise=False)
+            for line in str(value).splitlines():
+                log.exception(line, _raise=False)
+    else:
+        sys.__excepthook__(type, value, tback)
+        # log.exception("\n", "\n".join(traceback.format_tb(tback)),
+        #   value, _raise=False)
+
+
+sys.excepthook = __catcher
+
 LOGGER_LEVEL_COLORS = {
     "TRACE": f"{color.BOLD}{color.PURPLE}TRAC{color.END}",
     "RUNNING": f"{color.BOLD}{color.PURPLE}RUNN{color.END}",
@@ -76,8 +98,8 @@ LOGGER_LEVEL_COLORS = {
     "WARNING": f"{color.BOLD}{color.YELLOW_DARK}WARN{color.END}",
     "ERROR": f"{color.BOLD}{color.RED}ERRR{color.END}",
     "FAILED": f"{color.BOLD}{color.HIGHLIGHTED_RED}FAIL{color.END}",
-    "CRITICAL": f"{color.BOLD}{color.HIGHLIGHTED_RED}CRIT{color.END}",
-    "EXCEPTION": f"{color.BOLD}{color.HIGHLIGHTED_YELLOW}EXCP{color.END}",
+    "CRITICAL": f"{color.BOLD}{color.HIGHLIGHTED_RED_LIGHT}CRIT{color.END}",
+    "EXCEPTION": f"{color.BOLD}{color.HIGHLIGHTED_RED}EXCP{color.END}",
 }
 
 # Map custom levels to standard logging levels (and define custom levels)
@@ -136,6 +158,22 @@ def format_elapsed_time(start_time: float, end_time: float) -> str:
 
 
 class LoggerFormatter(logging.Formatter):
+    """
+    Custom logging formatter that supports colored output and configurable display options.
+
+    This formatter extends the standard logging.Formatter with additional features:
+    - Configurable color output for different message components
+    - Selective display of timestamp, log level, file information, and environment
+    - Support for message continuation (erasing previous line)
+
+    Attributes:
+        _show_level (bool): Whether to show the log level in the output
+        _show_date (bool): Whether to show the timestamp in the output
+        _show_file (bool): Whether to show the file name and line number
+        _show_env (bool): Whether to show the environment/logger name
+        colors (bool): Whether to use colored output
+    """
+
     def __init__(
         self,
         fmt: str = None,
@@ -145,6 +183,21 @@ class LoggerFormatter(logging.Formatter):
         colors=True,
         **args,
     ):
+        """
+        Initialize the LoggerFormatter.
+
+        Args:
+            fmt: Log message format string. If None, custom formatting is applied.
+            datefmt: Date format string for timestamps. If None, ISO format is used.
+            style: Style of the fmt string ('%', '{', or '$').
+            validate: Whether to validate the format string.
+            colors: Whether to use colored output in log messages.
+            **kwargs: Additional configuration options:
+                - level (bool): Whether to show the log level
+                - date (bool): Whether to show the timestamp
+                - file (bool): Whether to show file name and line number
+                - env (bool): Whether to show the environment/logger name
+        """
         super().__init__(fmt, datefmt, style, validate)
         self._show_level = args.get("level", True)
         self._show_date = args.get("date", True)
@@ -154,18 +207,40 @@ class LoggerFormatter(logging.Formatter):
         self.fmt = fmt
 
     def format(self, record):
+        """
+    Format the specified record as text.
+
+    Args:
+        record: The log record to format
+
+    Returns:
+        str: The formatted log message
+
+    Raises:
+        KeyError: If required keys are missing from record.args
+    """
         if self.fmt:
             return super().format(record)
+
         message = ""
 
-        if record.args["last_log"] is False and record.args["started"] is True:
-            message += "\033[A\033[K"
+        # Safely access record arguments with defaults
+        args = getattr(record, 'args', {})
+        if not isinstance(args, dict):
+            args = {}
+
+        asctime = args.get(
+            'asctime', datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+
+        # Handle line continuation
+        if not args.get('last_log', True) and args.get('started', False):
+            message += "\033[A\033[K"  # Move up one line and clear it
 
         if self.colors:
             if self._show_date:
-                message += f"{color.BLUE_DARK}{record.args['asctime']}{color.END} "
+                message += f"{color.BLUE_DARK}{asctime}{color.END} "
             if self._show_env:
-                message += f"{color.PURPLE}({record.name}){color.END} "
+                message += f"{color.PURPLE}({args.get('env', 'default')}){color.END} "
             if self._show_level:
                 message += (
                     f"{LOGGER_LEVEL_COLORS.get(record.levelname, record.levelname)} "
@@ -174,9 +249,9 @@ class LoggerFormatter(logging.Formatter):
                 message += f"{color.GREEN_DARK}{record.filename}{color.YELLOW_DARK}:{color.GREEN_DARK}{record.lineno}{color.END} "
         else:
             if self._show_date:
-                message += f"{record.args['asctime']} "
+                message += f"{asctime} "
             if self._show_env:
-                message += f"({record.name}) "
+                message += f"({args.get('env', 'default')}) "
             if self._show_level:
                 message += f"{record.levelname} "
             if self._show_file:
@@ -215,7 +290,7 @@ class Logger:
         self.flags = {"file": True, "date": True, "env": True, "level": True}
 
         # --- Standard Library Logging Setup ---
-        self.logger = logging.getLogger(env)
+        self.logger = logging.getLogger()
         self.logger.setLevel(logging.DEBUG)  # Set the *root* logger to DEBUG
 
         # Create a handler that outputs to the console (StreamHandler)
@@ -233,6 +308,7 @@ class Logger:
         self._task_finished = Event()
 
         self._start_log_thread()
+        __LOGGERS__.append(self)
 
     def _custom_formatters(self):
         """Formats log messages with colors and additional info."""
@@ -284,7 +360,7 @@ class Logger:
         self.console_handler.setLevel(LOGGER_LEVELS[level])
         self._custom_formatters()
 
-    def log(self, level: str, *messages, frame=None):
+    def log(self, level: str, *messages, frame=None, _raise=False):
         """Logs a message at the specified level.
 
         Adds the log entry to the queue for processing in a separate thread.
@@ -299,7 +375,8 @@ class Logger:
         message = self._get_message(*messages)
         # Put the log information into the queue
         now = datetime.datetime.isoformat(datetime.datetime.now())
-        self._log_queue.put_nowait((level.upper(), level_value, message, frame, now))
+        self._log_queue.put_nowait(
+            (level.upper(), level_value, message, frame, now, _raise))
 
     def _process_log_queue(self):
         """Processes the log queue in a separate thread."""
@@ -328,7 +405,8 @@ class Logger:
                     self.log("RUNNING", log_message, frame=task["frame"])
                     # sleep(0.1)
                     # self.remove_line()
-                    animation_index = (animation_index + 1) % len(self._animation)
+                    animation_index = (animation_index +
+                                       1) % len(self._animation)
 
                 if len(self._end_tasks) > 0:
                     for task in self._end_tasks.copy():
@@ -343,7 +421,7 @@ class Logger:
                         self.log(log_level, log_msg, frame=task["frame"])
 
                 if not self._log_queue.empty():
-                    level_str, level_value, message, frame, now = self._log_queue.get(
+                    level_str, level_value, message, frame, now, _raise = self._log_queue.get(
                         timeout=0.1
                     )
                     filename = (
@@ -365,6 +443,7 @@ class Logger:
                                 "asctime": now,
                                 "last_log": last_message_log,
                                 "started": started,
+                                "env": self.env
                             },
                         ),
                         None,
@@ -376,7 +455,7 @@ class Logger:
                         last_message_log = True
                     if not started:
                         started = True
-                    if level_str == "EXCEPTION":
+                    if _raise:
                         raise Exception(message)
 
             except Exception as e:
@@ -387,11 +466,13 @@ class Logger:
         """Starts the log processing thread."""
         if self._log_thread is None or not self._log_thread.is_alive():
             self._stop_event.clear()  # Make sure it's clear
-            self._log_thread = Thread(target=self._process_log_queue, daemon=True)
+            self._log_thread = Thread(
+                target=self._process_log_queue, daemon=True)
             self._log_thread.start()
 
     def set_env(self, env: str):
         self.env = env
+        self._custom_formatters()
 
     def sep(self):
         """Prints a horizontal separator."""
@@ -440,9 +521,9 @@ class Logger:
         frame = inspect.currentframe().f_back
         self.log("DONE", *messages, frame=frame)
 
-    def exception(self, *messages):
+    def exception(self, *messages, _raise=True):
         frame = inspect.currentframe().f_back
-        self.log("EXCEPTION", *messages, frame=frame)
+        self.log("EXCEPTION", *messages, frame=frame, _raise=_raise)
 
     def remove_line(self):
         """Method to remove one line from the command line"""

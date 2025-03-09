@@ -4,14 +4,14 @@ import re
 import shlex
 from typing import Any, Callable, Dict, List, Optional
 
-from utils import cmd_to_array, log, run_command
+from utils import cmd_to_array, log, run_command, clean_command
 
 from utils.exceptions import *  # noqa  # isort:skip
 
 
 os.environ["TF_IN_AUTOMATION"] = "1"
 # os.environ['TF_LOG'] = 'trace'
-
+log.set_env("Terraform")
 log.show_file(False)
 log.set_level("info")
 
@@ -51,13 +51,239 @@ TERRAFORM_ARGS = {
     "state": "-state=",
     "state_out": "-state-out=",
     "backup": "-backup=",
+    "backup_out": "-backup-out=",
     "list": "-list=",
     "diff": "-diff",
     "write": "-write=",
     "check": "-check",
     "recursive": "-recursive",
     "raw": "-raw",
+    "id": "-id=",
+    "type": "-type=",
+    "plan": "-plan=",
+    "draw_cycles": "-draw-cycles",
+    "module_depth": "-module-depth=",
+    "config": "-config=",
+    "provider": "-provider=",
+    "allow_missing": "-allow-missing",
+    "ignore_remote_version": "-ignore-remote-version",
+    "dry_run": "-dry-run"
 }
+
+TERRAFORM_GRAPH_TYPES = ["plan", "plan-destroy",
+                         "apply", "validate", "input", "refresh"]
+
+
+class Terraform:
+    chdir: str
+    __build_arg__: Callable
+
+
+class TerraformResult:
+    def __init__(self, success: bool, result: Any):
+        self.success = success
+        self.result = result
+        self.__dict__ = {"success": self.success, "result": self.result}
+
+    def __str__(self):
+        return f"TerraformResult(success={self.success}, result_len={len(str(self.result))})"
+
+
+class TerraformSubCommand:
+    __tf__: Terraform
+    __cmd__: str
+
+    def __init__(self, terraform_object: Terraform, command: str):
+        self.__tf__ = terraform_object
+        self.__cmd__ = command
+
+
+class State(TerraformSubCommand):
+    def __init__(self, terraform_object: Terraform):
+        super().__init__(terraform_object, "state")
+
+    def list(self, address: Optional[str] = None, state_file: Optional[str] = None, id: Optional[str] = None, chdir: Optional[str] = None):
+        cmd = [*self.__cmd__, "list"]
+        cmd.append(Terraform.__build_arg__("state", state_file))
+        cmd.append(Terraform.__build_arg__("id", id))
+        if not chdir:
+            chdir = self.__tf__.chdir
+        if address:
+            if isinstance(address, str):
+                cmd.append(shlex.quote(address))
+            elif isinstance(address, list):
+                for item in address:
+                    cmd.append(shlex.quote(item))
+
+        result = Terraform.cmd(cmd, "Terraform state list", chdir)
+
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(
+                f"Terraform state list completed in {result.duration}s")
+        else:
+            raise TerraformStateListError(
+                "Failed to run terraform state list",
+                "state list",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def show(self, address: Optional[str] = None, state_file: Optional[str] = None, json: Optional[bool] = None, chdir: Optional[str] = None):
+        cmd = [*self.__cmd__, "list"]
+        cmd.append(Terraform.__build_arg__("state", state_file))
+        cmd.append(Terraform.__build_arg__("json", json))
+        if not chdir:
+            chdir = self.__tf__.chdir
+        if address:
+            cmd.append(shlex.quote(address))
+        result = Terraform.cmd(cmd, "Terraform state list", chdir)
+
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(
+                f"Terraform state list completed in {result.duration}s")
+        else:
+            raise TerraformStateListError(
+                "Failed to run terraform state list",
+                "state list",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def mv(self, src: str, dest: str,
+           dry_run: Optional[bool] = None, lock: Optional[bool] = None,
+           lock_timeout: Optional[str] = None, state: Optional[str] = None,
+           state_out: Optional[str] = None, backup: Optional[str] = None,
+           backup_out: Optional[str] = None, ignore_remote_version: Optional[bool] = None,
+           chdir: Optional[str] = None):
+        cmd = [*self.__cmd__, "mv"]
+        cmd.append(Terraform.__build_arg__("dry_run", dry_run))
+        if lock is False:
+            cmd.append(Terraform.__build_arg__("lock", lock))
+        if lock_timeout != "0s":
+            cmd.append(Terraform.__build_arg__("lock_timeout", lock_timeout))
+
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.append(Terraform.__build_arg__("backup_out", backup_out))
+        cmd.append(Terraform.__build_arg__(
+            "ignore_remote_version", ignore_remote_version))
+
+        cmd.append(shlex.quote(src))
+        cmd.append(shlex.quote(dest))
+
+        if not chdir:
+            chdir = self.__tf__.chdir
+        result = Terraform.cmd(cmd, "Terraform state mv", chdir)
+
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(
+                f"Terraform state mv completed in {result.duration}s")
+        else:
+            raise TerraformStateMvError(
+                "Failed to run terraform state mv",
+                "state mv",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def rm(self, address: str, dry_run: Optional[bool] = None, lock: Optional[bool] = None,
+           lock_timeout: Optional[str] = None, state: Optional[str] = None,
+           state_out: Optional[str] = None, backup: Optional[str] = None, ignore_remote_version: Optional[bool] = None, chdir: Optional[str] = None):
+        cmd = [*self.__cmd__, "rm"]
+        cmd.append(Terraform.__build_arg__("dry_run", dry_run))
+        if lock is False:
+            cmd.append(Terraform.__build_arg__("lock", lock))
+        if lock_timeout != "0s":
+            cmd.append(Terraform.__build_arg__("lock_timeout", lock_timeout))
+
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.append(Terraform.__build_arg__(
+            "ignore_remote_version", ignore_remote_version))
+
+        cmd.append(shlex.quote(address))
+
+        if not chdir:
+            chdir = self.__tf__.chdir
+        result = Terraform.cmd(cmd, "Terraform state rm", chdir)
+
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(
+                f"Terraform state rm completed in {result.duration}s")
+        else:
+            raise TerraformStateRmError(
+                "Failed to run terraform state rm",
+                "state rm",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def replace_provider(self, src_provider: str, dest_provider: str,
+                         auto_approve: Optional[bool] = None, lock: Optional[bool] = None,
+                         lock_timeout: Optional[str] = None, state: Optional[str] = None,
+                         state_out: Optional[str] = None, backup: Optional[str] = None, ignore_remote_version: Optional[bool] = None, chdir: Optional[str] = None):
+        cmd = [*self.__cmd__, "replace-provider"]
+        if lock is False:
+            cmd.append(Terraform.__build_arg__("lock", lock))
+        if lock_timeout != "0s":
+            cmd.append(Terraform.__build_arg__("lock_timeout", lock_timeout))
+
+        cmd.append(Terraform.__build_arg__("auto_approve", auto_approve))
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.append(Terraform.__build_arg__(
+            "ignore_remote_version", ignore_remote_version))
+
+        cmd.append(shlex.quote(src_provider))
+        cmd.append(shlex.quote(dest_provider))
+
+        if not chdir:
+            chdir = self.__tf__.chdir
+        result = Terraform.cmd(cmd, "Terraform state replace-provider", chdir)
+
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(
+                f"Terraform state replace-provider completed in {result.duration}s")
+        else:
+            raise TerraformStateReplaceProviderError(
+                "Failed to run terraform state replace-provider",
+                "state replace-provider",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def pull(self,  chdir: Optional[str] = None):
+        cmd = [*self.__cmd__, "pull"]
+
+        if not chdir:
+            chdir = self.__tf__.chdir
+        result = Terraform.cmd(cmd, "Terraform state replace-provider", chdir)
+
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(
+                f"Terraform state replace-provider completed in {result.duration}s")
+        else:
+            raise TerraformStateReplaceProviderError(
+                "Failed to run terraform state replace-provider",
+                "state replace-provider",
+                result.stderr,
+                result.duration,
+            )
+        return res
 
 
 class Terraform:
@@ -69,16 +295,16 @@ class Terraform:
     command execution, and output parsing.
 
     Attributes:
-        _workspace (str): The Terraform workspace name
+        __workspace__ (str): The Terraform workspace name
         chdir (str): The directory where Terraform commands will be executed
-        _lock (bool): Whether to use state locking
-        _lock_timeout (int): How long to wait for state lock
-        _input (bool): Whether to ask for input interactively
-        _paralellism (int): Number of parallel operations
-        _color (bool): Whether to use color in output
-        _var_file (str): Path to variable definition file
-        _version (dict): Terraform version information
-        _planfile (str): Default plan file name
+        __lock__ (bool): Whether to use state locking
+        __lock_timeout__ (str): How long to wait for state lock
+        __input__ (bool): Whether to ask for input interactively
+        __paralellism__ (int): Number of parallel operations
+        __color__ (bool): Whether to use color in output
+        __var_file__ (str): Path to variable definition file
+        __version__ (dict): Terraform version information
+        __planfile__ (str): Default plan file name
 
     Example:
         ```python
@@ -99,23 +325,24 @@ class Terraform:
         workspace: str = "default",
         chdir: Optional[str] = None,
         lock=True,
-        lock_timeout=0,
+        lock_timeout="0s",
         input=False,
         parallelism=10,
         color=True,
         var_file: str = None,
     ):
         log.set_env(workspace)
-        self._workspace = workspace
+        self.__workspace__ = workspace
         self.chdir = chdir
-        self._lock = lock
-        self._lock_timeout = lock_timeout
-        self._input = input
-        self._paralellism = parallelism
-        self._color = color
-        self._var_file = var_file
-        self._version = self.version()
-        self._planfile = "plan.tfplan"
+        self.__lock__ = lock
+        self.__lock_timeout__ = lock_timeout
+        self.__input__ = input
+        self.__paralellism__ = parallelism
+        self.__color__ = color
+        self.__var_file__ = var_file
+        self.__version__ = self.version()
+        self.__planfile__ = "plan.tfplan"
+        self.state = State(self)
 
     def version(self) -> Dict[str, Any]:
         """
@@ -134,7 +361,7 @@ class Terraform:
         Raises:
             TerraformVersionError: If unable to retrieve version information
         """
-        result = run_command(cmd_to_array("terraform version -json"), show_output=False)
+        result = self.cmd(["version", "-json"], show_output=False)
         if result.success is False:
             raise TerraformVersionError(
                 "Failed to retrieve terrform version", "version", result.stderr
@@ -155,47 +382,47 @@ class Terraform:
             "latest": version["terraform_outdated"] == False,
             "platform": version["platform"],
         }
-        self._version = result
+        self.__version__ = result
         return result
 
-    def color(self, enable: bool = True):
+    def enable_color(self, enable: bool = True):
         """
         Set color output option.
 
         Args:
             enable (bool): Whether to enable color output. Defaults to True.
         """
-        self._color = enable
+        self.__color__ = enable
 
-    def lock(self, enable: bool = True):
+    def enable_lock(self, enable: bool = True):
         """
         Set state locking option.
 
         Args:
             enable (bool): Whether to enable state locking. Defaults to True.
         """
-        self._lock = enable
+        self.__lock__ = enable
 
-    def input(self, enable: bool = False):
+    def enable_input(self, enable: bool = False):
         """
         Set interactive input option.
 
         Args:
             enable (bool): Whether to enable interactive input. Defaults to False.
         """
-        self._input = enable
+        self.__input__ = enable
 
-    def lock_timeout(self, timeout: int = 0):
+    def enable_lock_timeout(self, timeout: str = "0s"):
         """
         Set state lock timeout.
 
         Args:
-            timeout (int): Lock timeout in seconds. Defaults to 0.
+            timeout (str): Lock timeout in seconds. Defaults to 0s.
         """
-        self._lock_timeout = timeout
+        self.__lock_timeout__ = timeout
 
     @staticmethod
-    def _build_arg(arg: str, value) -> str:
+    def __build_arg__(arg: str, value) -> str:
         """
         Build a formatted command-line argument string for Terraform.
 
@@ -213,7 +440,7 @@ class Terraform:
             elif isinstance(value, str) and len(value) == 0:
                 return ""
             elif value is not None and len(str(value)) > 0:
-                res += str(value)
+                res += shlex.quote(str(value))
 
         elif isinstance(value, bool):
             return res if value else ""
@@ -221,19 +448,19 @@ class Terraform:
             return ""
         return res
 
-    def _default_args(
+    def __default_args__(
         self,
-        color: bool = None,
-        lock: bool = None,
-        lock_timeout: int = None,
-        input: bool = None,
+        color: Optional[bool] = None,
+        lock: Optional[bool] = None,
+        lock_timeout: Optional[str] = None,
+        input: Optional[bool] = None,
     ) -> list:
         """Format default args
 
         Args:
             color (bool, optional): Enables terraform color output. Defaults to None.
             lock (bool, optional): Enables terrafom state lock. Defaults to None.
-            lock_timeout (int, optional): Timeout of lock state. Defaults to None.
+            lock_timeout (str, optional): Timeout of lock state. Defaults to None.
             input (bool, optional): Enables user input for commands that requires it. Defaults to None.
 
         Returns:
@@ -243,26 +470,27 @@ class Terraform:
         args = []
 
         if color is not None:
-            args.append(Terraform._build_arg("color", color))
-        elif self._color is False:
+            args.append(Terraform.__build_arg__("color", color))
+        elif self.__color__ is False:
             args.append(TERRAFORM_ARGS["color"])
         if lock is not None and lock is False:
-            args.append(Terraform._build_arg("lock", lock))
-        elif self.lock is False:
-            args.append(Terraform._build_arg("lock", self._lock))
+            args.append(Terraform.__build_arg__("lock", lock))
+        elif self.__lock__ is False:
+            args.append(Terraform.__build_arg__("lock", self.__lock__))
 
-        if lock_timeout is not None and lock_timeout > 0:
-            args.append(Terraform._build_arg("lock_timeout", lock_timeout))
-        elif self._lock_timeout > 0:
-            args.append(Terraform._build_arg("lock_timeout", self._lock_timeout))
+        if lock_timeout is not None and lock_timeout != "0s":
+            args.append(Terraform.__build_arg__("lock_timeout", lock_timeout))
+        elif self.__lock_timeout__ != "0s":
+            args.append(Terraform.__build_arg__(
+                "lock_timeout", self.__lock_timeout__))
 
         if input is not None:
-            args.append(Terraform._build_arg("input", input))
-        elif self._input is False:
-            args.append(Terraform._build_arg("input", self._input))
+            args.append(Terraform.__build_arg__("input", input))
+        elif self.__input__ is False:
+            args.append(Terraform.__build_arg__("input", self.__input__))
         return args
 
-    def _global_args(self, chdir: str = None):
+    def __global_args__(self, chdir: str = None):
         """Global terraform args formatter
 
         Args:
@@ -274,9 +502,9 @@ class Terraform:
         args = []
 
         if chdir is not None:
-            args.append(Terraform._build_arg("chdir", chdir))
+            args.append(Terraform.__build_arg__("chdir", chdir))
         elif self.chdir is not None and self.chdir != ".":
-            args.append(Terraform._build_arg("chdir", self.chdir))
+            args.append(Terraform.__build_arg__("chdir", self.chdir))
         return args
 
     @staticmethod
@@ -285,8 +513,10 @@ class Terraform:
         title: Optional[str] = None,
         chdir: Optional[str] = None,
         show_output: bool = True,
-        callback: Optional[Callable[[Optional[str], Optional[str]], Any]] = None,
-        line_callback: Optional[Callable[[Optional[str], Optional[str]], Any]] = None,
+        callback: Optional[Callable[[
+            Optional[str], Optional[str]], Any]] = None,
+        line_callback: Optional[Callable[[
+            Optional[str], Optional[str]], Any]] = None,
     ):
         """Run CLI Terraform command
 
@@ -375,33 +605,35 @@ class Terraform:
         cmd = ["init"]
 
         if readonly:
-            cmd.append(Terraform._build_arg("readonly", readonly))
+            cmd.append(Terraform.__build_arg__("readonly", readonly))
 
         cmd.extend(
-            self._default_args(
+            self.__default_args__(
                 color=color, lock=lock, lock_timeout=lock_timeout, input=input
             )
         )
 
-        cmd.append(Terraform._build_arg("upgrade", upgrade))
-        cmd.append(Terraform._build_arg("reconfigure", reconfigure))
-        cmd.append(Terraform._build_arg("migrate_state", migrate_state))
-        cmd.append(Terraform._build_arg("force_copy", force_copy))
-        cmd.append(Terraform._build_arg("backend_config", backend_config))
-        cmd.append(Terraform._build_arg("plugin_dir", plugin_dir))
-        # cmd.append(Terraform._build_arg("lockfile", lockfile))
+        cmd.append(Terraform.__build_arg__("upgrade", upgrade))
+        cmd.append(Terraform.__build_arg__("reconfigure", reconfigure))
+        cmd.append(Terraform.__build_arg__("migrate_state", migrate_state))
+        cmd.append(Terraform.__build_arg__("force_copy", force_copy))
+        cmd.append(Terraform.__build_arg__("backend_config", backend_config))
+        cmd.append(Terraform.__build_arg__("plugin_dir", plugin_dir))
+        # cmd.append(Terraform.__build_arg__("lockfile", lockfile))
 
         if not backend:
-            cmd.append(Terraform._build_arg("backend", backend))
+            cmd.append(Terraform.__build_arg__("backend", backend))
         if not get:
-            cmd.append(Terraform._build_arg("get", get))
+            cmd.append(Terraform.__build_arg__("get", get))
         if not get_plugins:
-            cmd.append(Terraform._build_arg("get_plugins", get_plugins))
+            cmd.append(Terraform.__build_arg__("get_plugins", get_plugins))
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform init", chdir=chdir)
         if result.success:
-            log.success(f"Terraform init completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform init completed in: {result.duration} seconds")
+            return TerraformResult(True, result.stdout)
         else:
             raise TerraformInitError(
                 "Failed to initialize terraform project",
@@ -409,7 +641,6 @@ class Terraform:
                 result.stderr,
                 result.duration,
             )
-        return result.success
 
     def get(self, update: bool = None, color: bool = None):
         """Terraform get command
@@ -425,20 +656,21 @@ class Terraform:
             bool: Command was successful
         """
         cmd = ["get"]
-        cmd.append(Terraform._build_arg("update", update))
-        cmd.append(Terraform._build_arg("color", color))
+        cmd.append(Terraform.__build_arg__("update", update))
+        cmd.append(Terraform.__build_arg__("color", color))
 
         result = Terraform.cmd(cmd, title="Terraform get", chdir=self.chdir)
         if result.success:
-            log.success(f"Terraform get completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform get completed in: {result.duration} seconds")
+            return TerraformResult(True, result.stdout)
         else:
             raise TerraformGetError(
                 "Failed to run terraform get", "get", result.stderr, result.duration
             )
-        return result.success
 
     @staticmethod
-    def _parse_vars(vars: Optional[Dict[str, Any]] = None) -> List[str]:
+    def __parse_vars__(vars: Optional[Dict[str, Any]] = None) -> List[str]:
         """
         Parse variable dictionary into command-line arguments.
 
@@ -516,62 +748,64 @@ class Terraform:
         """
         cmd = ["plan"]
         cmd.extend(
-            self._default_args(
+            self.__default_args__(
                 color=color, lock=lock, lock_timeout=lock_timeout, input=input
             )
         )
         if not out:
-            cmd.append(Terraform._build_arg("out", self._planfile))
+            cmd.append(Terraform.__build_arg__("out", self.__planfile__))
         else:
-            cmd.append(Terraform._build_arg("out", out))
+            cmd.append(Terraform.__build_arg__("out", out))
 
         if (
-            self._version["version"]["major"] >= 1
-            and self._version["version"]["minor"] >= 0
+            self.__version__["version"]["major"] >= 1
+            and self.__version__["version"]["minor"] >= 0
         ):
-            cmd.append(Terraform._build_arg("refresh_only", refresh_only))
+            cmd.append(Terraform.__build_arg__("refresh_only", refresh_only))
         else:
             log.warn(
-                f"the option '-refresh-only' is supported since the version 1.1.0, and your version is {self._version['version_str']}"
+                f"the option '-refresh-only' is supported since the version 1.1.0, and your version is {self.__version__['version_str']}"
             )
         if (
-            self._version["version"]["major"] >= 1
-            and self._version["version"]["minor"] >= 0
+            self.__version__["version"]["major"] >= 1
+            and self.__version__["version"]["minor"] >= 0
         ):
-            cmd.append(Terraform._build_arg("json", json))
+            cmd.append(Terraform.__build_arg__("json", json))
         else:
             log.warn(
-                f"the option '-json' is supported since the version 1.0.0, and your version is {self._version['version_str']}"
+                f"the option '-json' is supported since the version 1.0.0, and your version is {self.__version__['version_str']}"
             )
         if not parallelism:
-            cmd.append(Terraform._build_arg("parallelism", self._paralellism))
+            cmd.append(Terraform.__build_arg__(
+                "parallelism", self.__paralellism__))
         else:
-            cmd.append(Terraform._build_arg("parallelism", parallelism))
+            cmd.append(Terraform.__build_arg__("parallelism", parallelism))
 
-        cmd.append(Terraform._build_arg("destroy", destroy))
-        cmd.append(Terraform._build_arg("refresh", refresh))
-        cmd.append(Terraform._build_arg("replace", replace))
-        cmd.append(Terraform._build_arg("target", target))
-        cmd.append(Terraform._build_arg("var_file", var_file))
-        cmd.append(Terraform._build_arg("state", state))
-        cmd.append(Terraform._build_arg("compact_warnings", compact_warnings))
+        cmd.append(Terraform.__build_arg__("destroy", destroy))
+        cmd.append(Terraform.__build_arg__("refresh", refresh))
+        cmd.append(Terraform.__build_arg__("replace", replace))
+        cmd.append(Terraform.__build_arg__("target", target))
+        cmd.append(Terraform.__build_arg__("var_file", var_file))
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__(
+            "compact_warnings", compact_warnings))
 
-        cmd.extend(Terraform._parse_vars(vars))
+        cmd.extend(Terraform.__parse_vars__(vars))
 
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform plan", chdir=chdir)
         if result.success:
-            log.success(f"Terraform plan completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform plan completed in: {result.duration} seconds")
+            return TerraformResult(True, dict(stdout=result.stdout, output=result.callback_output))
         else:
             raise TerraformPlanError(
                 "Failed to run plan terraform", "plan", result.stderr, result.duration
             )
 
-        return result.success
-
     @staticmethod
-    def _apply_line_callback(stdout: str = None, stderr: str = None):
+    def __apply_line_callback__(stdout: str = None, stderr: str = None):
         """Per line callback for apply command output
 
         Args:
@@ -583,7 +817,7 @@ class Terraform:
             log.info(stdout["@message"])
 
     @staticmethod
-    def _apply_callback(stdout: str = None, stderr: str = None):
+    def __apply_callback__(stdout: str = None, stderr: str = None):
         """Output callback for terraform apply
 
         Args:
@@ -615,6 +849,13 @@ class Terraform:
         self,
         plan_file: Optional[str] = None,
         auto_approve: bool = False,
+        destroy: bool = False,
+        refresh: Optional[bool] = True,
+        refresh_only: bool = False,
+        replace: Optional[str] = None,
+        target: Optional[str] = None,
+        vars: Optional[dict] = None,
+        var_file: Optional[str] = None,
         compact_warnings: bool = False,
         input: Optional[bool] = None,
         json: bool = False,
@@ -632,6 +873,13 @@ class Terraform:
         Args:
             plan_file (str, optional): Plan state file result. Defaults to None.
             auto_approve (bool, optional): Auto approve apply. Defaults to False.
+            destroy (bool, optional): Plan terraform to destroy resources. `-destroy` arg. Defaults to False.
+            refresh (bool, optional): Ignore external state changes if false. `-refresh=<true|false>` arg. Defaults to True.
+            refresh_only (bool, optional): Only update terraform state. -refresh-only arg. Defaults to False.
+            replace (str, optional): Instructs Terraform to plan to replace the resource instance with the given address. `-replace=<value>` arg. Defaults to None.
+            target (str, optional): Instructs Terraform to focus its planning efforts only on resource instances which match the given address. `-target=<value>` arg. Defaults to None.
+            vars (dict, optional): Dict of vars to pass on CLI. `-var key=value` args in dict format. Defaults to None.
+            var_file (str, optional): Path to terraform vars file. `-var-file=<path>` arg. Defaults to None.
             compact_warnings (bool, optional): Shows any warning messages in a compact form. `-compact-warnings` arg. Defaults to False.
             input (bool, optional): Disables Terraform's default behavior of prompting for input for root module input variables that have not otherwise been assigned a value.`-input=<true|false>` arg. Defaults to False.
             json (bool, optional): Enables the machine readable JSON UI output. `-json` arg. Defaults to False.
@@ -653,33 +901,54 @@ class Terraform:
 
         cmd = ["apply"]
         cmd.extend(
-            self._default_args(
+            self.__default_args__(
                 color=color, lock=lock, lock_timeout=lock_timeout, input=input
             )
         )
 
         callback = None
         line_callback = None
-        if self._version["version"]["major"] >= 1:
-            cmd.append(Terraform._build_arg("json", json))
+
+        if self.__version__["version"]["major"] >= 1:
+            cmd.append(Terraform.__build_arg__("json", json))
             if json:
-                line_callback = Terraform._apply_line_callback
-                callback = Terraform._apply_callback
+                line_callback = Terraform.__apply_line_callback__
+                callback = Terraform.__apply_callback__
 
         if not parallelism:
-            cmd.append(Terraform._build_arg("parallelism", self._paralellism))
+            cmd.append(Terraform.__build_arg__(
+                "parallelism", self.__paralellism__))
         else:
-            cmd.append(Terraform._build_arg("parallelism", parallelism))
-        cmd.append(Terraform._build_arg("auto_approve", auto_approve))
-        cmd.append(Terraform._build_arg("compact_warnings", compact_warnings))
+            cmd.append(Terraform.__build_arg__("parallelism", parallelism))
+        cmd.append(Terraform.__build_arg__("auto_approve", auto_approve))
+        cmd.append(Terraform.__build_arg__(
+            "compact_warnings", compact_warnings))
 
-        cmd.append(Terraform._build_arg("state", state))
-        cmd.append(Terraform._build_arg("state_out", state_out))
-        cmd.append(Terraform._build_arg("backup", backup))
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.append(Terraform.__build_arg__("var_file", var_file))
+        cmd.extend(Terraform.__parse_vars__(vars))
+
+        cmd.append(Terraform.__build_arg__("destroy", destroy))
+        cmd.append(Terraform.__build_arg__("refresh", refresh))
+        cmd.append(Terraform.__build_arg__("replace", replace))
+        cmd.append(Terraform.__build_arg__("target", target))
+        if (
+            self.__version__["version"]["major"] >= 1
+            and self.__version__["version"]["minor"] >= 0
+        ):
+            cmd.append(Terraform.__build_arg__(
+                "refresh_only", refresh_only))
+        else:
+            log.warn(
+                f"the option '-refresh-only' is supported since the version 1.1.0, and your version is {self.__version__['version_str']}"
+            )
         if not plan_file:
-            cmd.append(shlex.quote(self._planfile))
+            cmd.append(shlex.quote(self.__planfile__))
         else:
             cmd.append(shlex.quote(plan_file))
+        print(cmd)
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(
@@ -688,10 +957,12 @@ class Terraform:
             chdir=chdir,
             line_callback=line_callback,
             callback=callback,
-            show_output=not json and self._version["version"]["major"] >= 1,
+            show_output=not json and self.__version__["version"]["major"] >= 1,
         )
+        res = TerraformResult(True, result.stdout)
         if result.success:
-            log.success(f"Terraform apply completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform apply completed in: {result.duration} seconds")
         else:
             raise TerraformApplyError(
                 "Failed to apply changes to state",
@@ -699,9 +970,10 @@ class Terraform:
                 result.stderr,
                 result.duration,
             )
-        if json and self._version["version"]["major"] >= 1:
-            return result.callback_output
-        return result.success
+        if json and self.__version__["version"]["major"] >= 1:
+            res.result = dict(stdout=result.stdout,
+                              output=result.callback_output)
+        return res
 
     def destroy(
         self,
@@ -740,28 +1012,30 @@ class Terraform:
         cmd = ["destroy"]
 
         cmd.extend(
-            self._default_args(
+            self.__default_args__(
                 color=color, lock=lock, lock_timeout=lock_timeout, input=input
             )
         )
 
         if not parallelism:
-            cmd.append(Terraform._build_arg("parallelism", self._paralellism))
+            cmd.append(Terraform.__build_arg__(
+                "parallelism", self.__paralellism__))
         else:
-            cmd.append(Terraform._build_arg("parallelism", parallelism))
+            cmd.append(Terraform.__build_arg__("parallelism", parallelism))
 
-        cmd.append(Terraform._build_arg("auto_approve", auto_approve))
-        cmd.append(Terraform._build_arg("target", target))
-        cmd.append(Terraform._build_arg("var_file", var_file))
+        cmd.append(Terraform.__build_arg__("auto_approve", auto_approve))
+        cmd.append(Terraform.__build_arg__("target", target))
+        cmd.append(Terraform.__build_arg__("var_file", var_file))
 
-        cmd.extend(self._parse_vars(vars))
+        cmd.extend(self.__parse_vars__(vars))
 
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform destroy", chdir=chdir)
         if result.success:
-            log.success(f"Terraform destroy completed in: {result.duration} seconds")
-            return True
+            log.success(
+                f"Terraform destroy completed in: {result.duration} seconds")
+            return TerraformResult(True, result.stdout)
         else:
             error_message = f"Failed to destroy terraform resources"
             log.critical(f"{error_message} in: {result.duration} seconds")
@@ -786,30 +1060,32 @@ class Terraform:
         """
         cmd = ["show"]
         log.info("Running Terraform show")
-        cmd.append(Terraform._build_arg("json", json))
+        cmd.append(Terraform.__build_arg__("json", json))
 
         if color is not None:
-            cmd.append(Terraform._build_arg("color", color))
+            cmd.append(Terraform.__build_arg__("color", color))
         else:
-            cmd.append(Terraform._build_arg("color", self._color))
+            cmd.append(Terraform.__build_arg__("color", self.__color__))
 
         if not file:
-            cmd.append(shlex.quote(self._planfile))
+            cmd.append(shlex.quote(self.__planfile__))
         else:
             cmd.append(shlex.quote(file))
 
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, chdir=chdir, show_output=False)
+        res = TerraformResult(True, result.stdout)
         if result.success:
-            log.success(f"Terraform show completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform show completed in: {result.duration} seconds")
         else:
             log.critical(
                 f"Failed to show terraform state in: {result.duration} seconds"
             )
         if json:
-            return _json.loads(result.stdout)
-        return result.stdout
+            res.result = _json.loads(result.stdout)
+        return res
 
     def login(self, hostname: str = None, chdir: str = None):
         """Terraform Login Command
@@ -831,8 +1107,10 @@ class Terraform:
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform login", chdir=chdir)
+        res = TerraformResult(True, result.stdout)
         if result.success:
-            log.success(f"Terraform login completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform login completed in: {result.duration} seconds")
         else:
             raise TerraformLoginError(
                 f"Failed to terraform login to host '{hostname}'",
@@ -840,7 +1118,7 @@ class Terraform:
                 result.stderr,
                 result.duration,
             )
-        return result.success
+        return res
 
     def logout(self, hostname: str = None, chdir: str = None):
         cmd = ["logout"]
@@ -850,8 +1128,10 @@ class Terraform:
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, title="Terraform logout", chdir=chdir)
+        res = TerraformResult(True, result.stdout)
         if result.success:
-            log.success(f"Terraform logout completed in: {result.duration} seconds")
+            log.success(
+                f"Terraform logout completed in: {result.duration} seconds")
         else:
             raise TerraformLogoutError(
                 f"Failed to terraform logout to host '{hostname}'",
@@ -859,7 +1139,7 @@ class Terraform:
                 result.stderr,
                 result.duration,
             )
-        return result.success
+        return res
 
     @staticmethod
     def fmt(
@@ -871,23 +1151,23 @@ class Terraform:
         recursive: bool = False,
     ):
         cmd = ["fmt"]
-        cmd.append(Terraform._build_arg("diff", diff))
-        cmd.append(Terraform._build_arg("check", check))
-        cmd.append(Terraform._build_arg("recursive", recursive))
+        cmd.append(Terraform.__build_arg__("diff", diff))
+        cmd.append(Terraform.__build_arg__("check", check))
+        cmd.append(Terraform.__build_arg__("recursive", recursive))
         if list_files is False:
-            cmd.append(Terraform._build_arg("list", list_files))
+            cmd.append(Terraform.__build_arg__("list", list_files))
         if write is False:
-            cmd.append(Terraform._build_arg("write", write))
+            cmd.append(Terraform.__build_arg__("write", write))
 
         result = Terraform.cmd(cmd, "Terraform fmt", chdir)
-
+        res = TerraformResult(True, result.stdout)
         if result.success:
             log.success(f"Terraform fmt completed in {result.duration}s")
         else:
             raise TerraformFmtError(
                 "Failed to run terraform fmt", "fmt", result.stderr, result.duration
             )
-        return result.success
+        return res
 
     def fmt(
         self,
@@ -900,24 +1180,24 @@ class Terraform:
     ):
         cmd = ["fmt"]
 
-        cmd.append(Terraform._build_arg("diff", diff))
-        cmd.append(Terraform._build_arg("check", check))
-        cmd.append(Terraform._build_arg("recursive", recursive))
+        cmd.append(Terraform.__build_arg__("diff", diff))
+        cmd.append(Terraform.__build_arg__("check", check))
+        cmd.append(Terraform.__build_arg__("recursive", recursive))
         if list_files is False:
-            cmd.append(Terraform._build_arg("list", list_files))
+            cmd.append(Terraform.__build_arg__("list", list_files))
         if write is False:
-            cmd.append(Terraform._build_arg("write", write))
+            cmd.append(Terraform.__build_arg__("write", write))
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, "Terraform fmt", chdir)
-
+        res = TerraformResult(True, result.stdout)
         if result.success:
             log.success(f"Terraform fmt completed in {result.duration}s")
         else:
             raise TerraformFmtError(
                 "Failed to run terraform fmt", "fmt", result.stderr, result.duration
             )
-        return result.success
+        return res
 
     def validate(
         self,
@@ -929,12 +1209,12 @@ class Terraform:
 
         if color is False:
             color = self.color
-        cmd.append(Terraform._build_arg("color", color))
-        cmd.append(Terraform._build_arg("json", json))
+        cmd.append(Terraform.__build_arg__("color", color))
+        cmd.append(Terraform.__build_arg__("json", json))
         if not chdir:
             chdir = self.chdir
         result = Terraform.cmd(cmd, "Terraform validate", chdir)
-
+        res = TerraformResult(True, result.stdout)
         if result.success:
             log.success(f"Terraform validate completed in {result.duration}s")
         else:
@@ -944,7 +1224,7 @@ class Terraform:
                 result.stderr,
                 result.duration,
             )
-        return result.success
+        return res
 
     def output(
         self,
@@ -959,16 +1239,17 @@ class Terraform:
         log.info(cmd)
         if color is False:
             color = self.color
-        cmd.append(Terraform._build_arg("color", color))
-        cmd.append(Terraform._build_arg("json", json))
-        cmd.append(Terraform._build_arg("raw", raw))
-        cmd.append(Terraform._build_arg("state", state))
+        cmd.append(Terraform.__build_arg__("color", color))
+        cmd.append(Terraform.__build_arg__("json", json))
+        cmd.append(Terraform.__build_arg__("raw", raw))
+        cmd.append(Terraform.__build_arg__("state", state))
         if output_name:
             cmd.append(shlex.quote(output_name))
         if not chdir:
             chdir = self.chdir
-        result = Terraform.cmd(cmd, "Terraform output", chdir, show_output=not json)
-        print(result.code)
+        result = Terraform.cmd(cmd, "Terraform output",
+                               chdir, show_output=not json)
+        res = TerraformResult(True, result.stdout)
         if result.success:
             log.success(f"Terraform output completed in {result.duration}s")
         else:
@@ -979,14 +1260,183 @@ class Terraform:
                 result.duration,
             )
         if json:
-            return _json.loads(result.stdout)
-        return result.success
+            res.result = _json.loads(result.stdout)
+        return res
+
+    def graph(self, type: Optional[str] = None, plan: Optional[str] = None, draw_cycles: Optional[bool] = False, module_depth: Optional[int] = None, chdir: Optional[str] = None):
+        cmd = ["graph"]
+
+        if type:
+            if type not in TERRAFORM_GRAPH_TYPES:
+                raise TerraformGraphError(
+                    f"The type:{type} is not available, please choose one of: {', '.join(TERRAFORM_GRAPH_TYPES)}", "graph")
+            cmd.append(Terraform.__build_arg__("type", type))
+        cmd.append(Terraform.__build_arg__("plan", plan))
+        cmd.append(Terraform.__build_arg__("draw_cycles", draw_cycles))
+        cmd.append(Terraform.__build_arg__("module_depth", module_depth))
+
+        if not chdir:
+            chdir = self.chdir
+
+        result = Terraform.cmd(cmd, "Terraform graph",
+                               chdir)
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(f"Terraform graph completed in {result.duration}s")
+        else:
+            raise TerraformGraphError(
+                "Failed to run terraform graph",
+                "graph",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def Import(self, address: str, id: str, config: Optional[str] = None, input: Optional[bool] = None, lock: Optional[bool] = None, lock_timeout: Optional[int] = None, color: Optional[bool] = None, parallelism: Optional[int] = None, provider: Optional[str] = None, vars: Optional[Dict[str, Any]] = None, var_file: Optional[str] = None, state: Optional[str] = None, state_out: Optional[str] = None, backup: Optional[str] = None, chdir: Optional[str] = None):
+        cmd = ["import"]
+        cmd.extend(self.__default_args__(color=color, lock=lock,
+                   lock_timeout=lock_timeout, input=input))
+
+        cmd.append(Terraform.__build_arg__("config", config))
+        cmd.append(Terraform.__build_arg__("paralellism", parallelism))
+        cmd.append(Terraform.__build_arg__("provider", provider))
+        cmd.append(Terraform.__build_arg__("var_file", var_file))
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.extend(Terraform.__parse_vars__(vars))
+
+        cmd.append(shlex.quote(address))
+        cmd.append(shlex.quote(id))
+
+        if not chdir:
+            chdir = self.chdir
+        result = Terraform.cmd(cmd, "Terraform import",
+                               chdir)
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(f"Terraform import completed in {result.duration}s")
+        else:
+            raise TerraformImportError(
+                "Failed to run terraform import",
+                "import",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def refresh(self, chdir: Optional[str] = None):
+        cmd = ["refresh"]
+        if not chdir:
+            chdir = self.chdir
+        result = Terraform.cmd(cmd, "Terraform refresh",
+                               chdir)
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(f"Terraform refresh completed in {result.duration}s")
+        else:
+            raise TerraformRefreshError(
+                "Failed to run terraform refresh",
+                "refresh",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def __legacy_taint__(self, address: str, backup: Optional[str] = None, state: Optional[str] = None, state_out: Optional[str] = None, ignore_remote_version: Optional[bool] = None, allow_missing: Optional[bool] = None, lock: Optional[bool] = None, lock_timeout: Optional[str] = None, chdir: Optional[str] = None):
+        cmd = ["taint"]
+        if not lock:
+            lock = self.__lock__
+        if not lock_timeout:
+            lock_timeout = self.__lock_timeout__
+
+        if lock is False:
+            cmd.append(Terraform.__build_arg__("lock", lock))
+        if lock_timeout != "0s":
+            cmd.append(Terraform.__build_arg__(
+                "lock_timeout", lock_timeout))
+
+        cmd.append(Terraform.__build_arg__(
+            "ignore_remote_version", ignore_remote_version))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("allow_missing", allow_missing))
+        cmd.append(shlex.quote(address))
+
+        if not chdir:
+            chdir = self.chdir
+        result = Terraform.cmd(cmd, "Terraform taint",
+                               chdir)
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(f"Terraform taint completed in {result.duration}s")
+        else:
+            raise TerraformTaintError(
+                "Failed to run terraform taint",
+                "taint",
+                result.stderr,
+                result.duration,
+            )
+        return res
+
+    def taint(self, address: str, backup: Optional[str] = None, state: Optional[str] = None, state_out: Optional[str] = None, ignore_remote_version: Optional[bool] = None, allow_missing: Optional[bool] = None, lock: Optional[bool] = None, lock_timeout: Optional[str] = None, vars: Optional[Dict[str, Any]] = None, var_file: Optional[str] = None, chdir: Optional[str] = None):
+        if self.__version__["version"]["major"] == 0 and self.__version__["version"]["minor"] <= 15:
+            if self.__version__["version"]["minor"] == 15 and self.__version__["version"]["patch"] > 2:
+                log.warn(
+                    f"Command 'terraform taint' is deprecated since 0.15.2, using 'terraform apply -replace=<address>' instead")
+                return self.apply(replace=address, lock=lock, lock_timeout=lock_timeout, chdir=chdir, vars=vars, var_file=var_file, backup=backup, state=state, state_out=state_out)
+            else:
+                return self.__legacy_taint__(address, lock=lock, allow_missing=allow_missing, lock_timeout=lock_timeout, chdir=chdir, backup=backup, state=state, state_out=state_out, ignore_remote_version=ignore_remote_version)
+        else:
+            log.warn(
+                f"Command 'terraform taint' is deprecated since 0.15.2, using 'terraform apply -replace=<address>' instead")
+            return self.apply(replace=address, lock=lock, lock_timeout=lock_timeout, chdir=chdir, vars=vars, var_file=var_file, backup=backup, state=state, state_out=state_out)
+
+    def untaint(self, address: str, backup: Optional[str] = None, state: Optional[str] = None, state_out: Optional[str] = None, ignore_remote_version: Optional[bool] = None, allow_missing: Optional[bool] = None, lock: Optional[bool] = None, lock_timeout: Optional[str] = None, chdir: Optional[str] = None):
+        cmd = ["untaint"]
+        if not lock:
+            lock = self.__lock__
+        if not lock_timeout:
+            lock_timeout = self.__lock_timeout__
+
+        if lock is False:
+            cmd.append(Terraform.__build_arg__("lock", lock))
+        if lock_timeout != "0s":
+            cmd.append(Terraform.__build_arg__(
+                "lock_timeout", lock_timeout))
+
+        cmd.append(Terraform.__build_arg__(
+            "ignore_remote_version", ignore_remote_version))
+        cmd.append(Terraform.__build_arg__("backup", backup))
+        cmd.append(Terraform.__build_arg__("state", state))
+        cmd.append(Terraform.__build_arg__("state_out", state_out))
+        cmd.append(Terraform.__build_arg__("allow_missing", allow_missing))
+        cmd.append(shlex.quote(address))
+
+        if not chdir:
+            chdir = self.chdir
+        result = Terraform.cmd(cmd, "Terraform untaint",
+                               chdir)
+        res = TerraformResult(True, result.stdout)
+        if result.success:
+            log.success(f"Terraform untaint completed in {result.duration}s")
+        else:
+            raise TerraformUntaintError(
+                "Failed to run terraform untaint",
+                result.command,
+                result.stderr,
+                result.duration,
+            )
+        return res
 
 
 proc = log.start("whole process")
 tf = Terraform(chdir="./tests/terraform")
-vars = {"bucket_name": "test_bucket", "test_variable": {"test1": 1, "test2": None}}
+vars = {"bucket_name": "test_bucket",
+        "test_variable": {"test1": 1, "test2": None}}
 tf.fmt()
+
 log.info(tf.version())
 log.info(
     tf.init(
@@ -995,9 +1445,13 @@ log.info(
 )
 tf.validate()
 log.info(tf.get())
-log.info(tf.plan(vars=vars, destroy=False))
+log.info(tf.plan(vars=vars))
+tf.taint("random_string.random", vars=vars)
+tf.untaint("random_string.random")
+log.info(tf.plan(vars=vars))
 # log.info(tf.show(json=True))
-log.info(tf.apply(json=False))
-log.info(tf.output(json=True, output_name="pass"))
+log.info(tf.apply())
+log.info(tf.output(json=True))
+log.info(tf.state.list().__dict__)
 # log.info(tf.destroy(vars=vars))
 log.finish(proc)
