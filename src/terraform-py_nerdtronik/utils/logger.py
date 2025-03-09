@@ -383,15 +383,15 @@ class Logger:
         animation_index = 0
         last_message_log = True
         started = False
-        next_time = datetime.datetime.now()
-        delta = datetime.timedelta(milliseconds=200)
+        cycle_start = time()
+        delta = 0.2
         while not self._stop_event.is_set() or not self._log_queue.empty():
-            period = datetime.datetime.now()
+            cycle_period = time()
             try:
                 # Get a task from the queue.  Use a timeout to allow checking _stop_event.
                 num_tasks = len(self._tasks)  # +1 for the current task
-                if num_tasks > 0 and period >= next_time:
-                    next_time += delta
+                if num_tasks > 0 and (cycle_period - cycle_start)>=delta:
+                    cycle_start = time()
                     task = self._tasks[0]
                     message, start_time, now, frame, level_value = (
                         task["message"],
