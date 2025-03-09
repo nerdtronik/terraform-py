@@ -71,7 +71,7 @@ __LOGGERS__ = []
 HANDLE_EXCEPTIONS = True
 
 
-def __catcher(type, value, tback):
+def __catcher__(type, value, tback):
     if HANDLE_EXCEPTIONS:
         for logger in __LOGGERS__:
             for line in traceback.format_tb(tback):
@@ -85,7 +85,7 @@ def __catcher(type, value, tback):
         #   value, _raise=False)
 
 
-sys.excepthook = __catcher
+sys.excepthook = __catcher__
 
 LOGGER_LEVEL_COLORS = {
     "TRACE": f"{color.BOLD}{color.PURPLE}TRAC{color.END}",
@@ -390,7 +390,7 @@ class Logger:
             try:
                 # Get a task from the queue.  Use a timeout to allow checking _stop_event.
                 num_tasks = len(self._tasks)  # +1 for the current task
-                if num_tasks > 0 and (cycle_period - cycle_start)>=delta:
+                if num_tasks > 0 and (cycle_period - cycle_start) >= delta:
                     cycle_start = time()
                     task = self._tasks[0]
                     message, start_time, now, frame, level_value = (
