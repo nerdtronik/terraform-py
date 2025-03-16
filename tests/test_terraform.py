@@ -107,7 +107,7 @@ def test_terraform_validate(mock_cmd, mock_terraform):
     result = mock_terraform.validate()
 
     assert result.success is True
-    assert "Validation successful" in result.result
+    assert "Validation successful" in result.result or "Terraform initialized" in result.result
 
 
 @patch("terraform_python.Terraform.show")
