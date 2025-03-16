@@ -5,7 +5,7 @@ on:
       - main
 jobs:
   test:
-    uses: ./test.yml@main
+    uses: ./test.yml
 
   build-and-verify:
     name: 🔨 Build and Validate
