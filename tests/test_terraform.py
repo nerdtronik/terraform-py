@@ -26,14 +26,14 @@ def test_terraform_init(mock_terraform):
 @patch("terraform_python.Terraform.version")
 def test_terraform_version(mock_cmd, mock_terraform):
     """Test the version method of Terraform."""
-    mock_version_output = {
-        "version": {"major": 1, "minor": 5, "patch": 2},
-        "version_str": "1.5.2",
-        "latest": False,
-        "platform": "linux_amd64",
-    }
+    # mock_version_output = {
+    #     "version": {"major": 1, "minor": 5, "patch": 2},
+    #     "version_str": "1.5.2",
+    #     "latest": False,
+    #     "platform": "linux_amd64",
+    # }
 
-    mock_cmd.return_value = TerraformResult(True, mock_version_output)
+    # mock_cmd.return_value = TerraformResult(True, mock_version_output)
 
     result = mock_terraform.version()
     tf_version = os.getenv("TF_VERSION")
