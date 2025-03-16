@@ -118,4 +118,4 @@ def test_terraform_show(mock_cmd, mock_terraform):
     result = mock_terraform.show()
 
     assert result.success is True
-    assert "Outputs" in result.result
+    assert json.loads(result.result)["output"] == "success"
