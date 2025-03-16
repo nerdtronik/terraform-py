@@ -1,4 +1,4 @@
-from terraform_py import Terraform, log
+from terraform_python import Terraform, log
 
 proc = log.start("whole process")
 tf = Terraform(chdir="./tests/terraform", color=False, workspace="test")

@@ -1,17 +1,15 @@
 [build-system]
-requires = ["flit_core >=3.2"]
-build-backend = "flit_core.buildapi"
-
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "terraform-python"
-# dynamic = ["version"]
+dynamic = ["version"]
 dependencies = []
 authors = [{ name = "nerdtronik", email = "nerdtronikpay@gmail.com" }]
 description = "A Terraform python wrapper"
-readme = {file = "README.md", content-type = "text/markdown"}
+readme = "README.md"
 requires-python = ">=3.8"
-version = "0.0.1a0"
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.6",
@@ -34,13 +32,21 @@ classifiers = [
 keywords=["terraform","ci/cd","cicd","ci-cd","terraform-py","terraform-python"]
 
 [project.urls]
-Homepage = "https://github.com/nerdtronik/terraform-py"
-Documentation = "https://github.com/nerdtronik/terraform-py"
 Repository = "https://github.com/nerdtronik/terraform-py"
 
 # [tool.setuptools]
 # packages = ["terraform_py", "terraform_py.utils", "terraform_py.classes"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
 
+[tool.hatch.version]
+path = "./version"
+pattern = "(?P<version>[^']+)"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/docs",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/terraform_python"]
