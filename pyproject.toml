@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 
 [project]
-name = "terraform-py"
+name = "terraform-python"
 # dynamic = ["version"]
 dependencies = []
 authors = [{ name = "nerdtronik", email = "nerdtronikpay@gmail.com" }]
