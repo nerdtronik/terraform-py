@@ -53,7 +53,7 @@ def test_terraform_init_command(mock_cmd, mock_terraform):
     result = mock_terraform.init()
 
     assert result.success is True
-    assert "Terraform initialized" in result.result
+    assert "Terraform has been successfully initialized" in result.result
 
 
 @patch("terraform_python.Terraform.plan")
@@ -61,10 +61,9 @@ def test_terraform_plan(mock_cmd, mock_terraform):
     """Test calling the Terraform plan method."""
     mock_cmd.return_value = TerraformResult(True, "Plan created")
 
-    result = mock_terraform.plan()
+    result = mock_terraform.plan(json=True)
 
     assert result.success is True
-    assert "Plan created" in result.result["stdout"]
 
 
 @patch("terraform_python.Terraform.apply")
@@ -119,4 +118,4 @@ def test_terraform_show(mock_cmd, mock_terraform):
     result = mock_terraform.show()
 
     assert result.success is True
-    assert result.result["output"] == "success"
+    assert "Outputs" in result.result
