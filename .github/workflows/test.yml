@@ -18,6 +18,8 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ matrix.tf-version }}
+      - name: 📦 Setup uv
+        uses: astral-sh/setup-uv@v3
 
       - name: 📦 Install tox
         run: uv tool install --python-preference only-managed --python 3.13 tox --with tox-uv --with tox-gh
