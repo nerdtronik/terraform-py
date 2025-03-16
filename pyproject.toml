@@ -12,8 +12,6 @@ readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.6",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -32,7 +30,7 @@ classifiers = [
 keywords=["terraform","ci/cd","cicd","ci-cd","terraform-py","terraform-python"]
 
 [project.urls]
-Repository = "https://github.com/nerdtronik/terraform-py"
+Repository = "https://github.com/nerdtronik/terraform-python"
 
 # [tool.setuptools]
 # packages = ["terraform_py", "terraform_py.utils", "terraform_py.classes"]

@@ -23,7 +23,7 @@ log.info(tf.show(json=True))
 log.info(tf.apply())
 log.info(tf.output(json=True).result)
 state = tf.state.pull().result
-with open("./tests/terraform/terraform.tfstate","w+") as file:
+with open("./tests/terraform/terraform.tfstate", "w+") as file:
     file.write(state)
 log.info(tf.state.list(state_file="terraform.tfstate").__dict__)
 log.info(tf.state.show())
@@ -37,4 +37,3 @@ log.info(tf.workspace.select("test", or_create=True).__dict__)
 # log.info(tf.workspace.current)
 log.finish(proc)
 # print(state)
-

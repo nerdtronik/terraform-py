@@ -4,13 +4,15 @@ from .exceptions import *
 from ..utils import log
 import shlex
 
+
 class Workspace:
     __tf__: Terraform
     __cmd__: str
+
     def __init__(self, terraform_object: Terraform):
         self.current = "default"
-        self.__cmd__="workspace"
-        self.__tf__=terraform_object    
+        self.__cmd__ = "workspace"
+        self.__tf__ = terraform_object
 
     def list(
         self,
@@ -69,7 +71,7 @@ class Workspace:
         or_create: Optional[bool] = False,
         color: Optional[bool] = None,
         chdir: Optional[str] = None,
-        quiet:Optional[bool]=False
+        quiet: Optional[bool] = False,
     ):
         cmd = [self.__cmd__, "select"]
 
@@ -87,20 +89,23 @@ class Workspace:
                 if workspace not in existing:
                     if not quiet:
                         log.warn(
-                        "The arg -or-create is available since version 1.4.x, and your version is",
-                        self.__tf__.__version__["version_str"],
-                        "Using alternate method",
-                    )
+                            "The arg -or-create is available since version 1.4.x, and your version is",
+                            self.__tf__.__version__["version_str"],
+                            "Using alternate method",
+                        )
                     return self.new(workspace, color=color, chdir=chdir)
         cmd.append(shlex.quote(workspace))
 
-        result = self.__tf__.cmd(cmd, "Terraform workspace select", chdir=chdir, show_output=not quiet)
+        result = self.__tf__.cmd(
+            cmd, "Terraform workspace select", chdir=chdir, show_output=not quiet
+        )
 
         if not result.success:
             if not quiet:
                 log.failed(
-                f"Terraform workspace select failed in {result.duration}s", end_sub=True
-            )
+                    f"Terraform workspace select failed in {result.duration}s",
+                    end_sub=True,
+                )
             raise TerraformError(
                 "Failed to execute terraform workspace list",
                 "workspace select",
@@ -110,8 +115,9 @@ class Workspace:
             )
         if not quiet:
             log.success(
-            f"Terraform workspace select succeded in {result.duration}s", end_sub=True
-        )
+                f"Terraform workspace select succeded in {result.duration}s",
+                end_sub=True,
+            )
         self.__tf__.__workspace__ = workspace
         self.current = workspace
         log.set_env(workspace)

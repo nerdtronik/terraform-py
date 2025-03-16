@@ -1,4 +1,5 @@
 import sys
+
 sys.path.append("..")
 from typing import Any, Callable, Dict, List, Optional
 from .base import *
@@ -12,9 +13,10 @@ import os
 class State:
     __tf__: Terraform
     __cmd__: str
+
     def __init__(self, terraform_object: Terraform):
-        self.__cmd__="state"
-        self.__tf__=terraform_object
+        self.__cmd__ = "state"
+        self.__tf__ = terraform_object
 
     def list(
         self,
@@ -291,6 +293,8 @@ class State:
         cmd.append(
             self.__tf__.__build_arg__("ignore_remote_version", ignore_remote_version)
         )
+        if not chdir:
+            chdir = self.__tf__.chdir
 
         if file_content is not None:
             filename = f"terraform-temp-state-{uuid()}.tfstate"

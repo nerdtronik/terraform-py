@@ -1,0 +1,24 @@
+name: 🎫 pull-request
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  test:
+    uses: ./test
+
+  build-and-verify:
+    name: 🔨 Build and Validate
+    needs: test
+    if: needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Install Hatch
+        uses: pypa/hatch@install
+      
+      - name: 🔨 Build
+        run: hatch build
+   

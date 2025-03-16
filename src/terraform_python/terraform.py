@@ -14,17 +14,18 @@ log.set_env("Terraform")
 log.show_file(False)
 log.set_level("info")
 
+
 class Terraform:
-   
+
     def __init__(
         self,
         workspace: Optional[str] = "default",
         chdir: Optional[str] = None,
-        lock:Optional[bool]=True,
-        lock_timeout:Optional[str]="0s",
-        input:Optional[bool]=False,
-        parallelism:Optional[int]=10,
-        color:Optional[bool]=True,
+        lock: Optional[bool] = True,
+        lock_timeout: Optional[str] = "0s",
+        input: Optional[bool] = False,
+        parallelism: Optional[int] = 10,
+        color: Optional[bool] = True,
         var_file: Optional[str] = None,
     ):
         self.__workspace__ = workspace
@@ -41,12 +42,14 @@ class Terraform:
         self.workspace = Workspace(self)
         log.set_env(self.workspace.current)
         self.version(quiet=True)
-        if workspace!="default":
+        if workspace != "default":
             log.info("Trying to select workspace")
             try:
-                self.workspace.select(workspace,or_create=True,quiet=True)
-            except Exception as e: 
-                log.warn("Failed to switch workspace, please run the 'init' command first.")
+                self.workspace.select(workspace, or_create=True, quiet=True)
+            except Exception as e:
+                log.warn(
+                    "Failed to switch workspace, please run the 'init' command first."
+                )
 
     def version(self, quiet: Optional[bool] = False) -> TerraformResult:
         if not quiet:
@@ -251,10 +254,10 @@ class Terraform:
         log.success(
             f"Terraform init completed in: {result.duration} seconds", end_sub=True
         )
-        log.info(self.workspace.current ,self.__workspace__)
-        if self.workspace.current !=self.__workspace__:
+        log.info(self.workspace.current, self.__workspace__)
+        if self.workspace.current != self.__workspace__:
             self.workspace.list(True)
-            if self.workspace.current !=self.__workspace__:
+            if self.workspace.current != self.__workspace__:
                 self.__workspace__ = self.workspace.select(
                     self.__workspace__, or_create=True
                 ).result

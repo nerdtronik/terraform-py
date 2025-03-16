@@ -115,6 +115,7 @@ def format_elapsed_time(start_time: float, end_time: float) -> str:
 class LoggerFormatter:
     pass
 
+
 class LoggerFormatter(logging.Formatter):
     """
     Custom logging formatter that supports colored output and configurable display options.
@@ -139,7 +140,7 @@ class LoggerFormatter(logging.Formatter):
         style="%",
         validate=True,
         colors=True,
-        old:LoggerFormatter=None,
+        old: LoggerFormatter = None,
         **args,
     ):
         """
@@ -400,8 +401,10 @@ class Logger:
 
     def __custom_formatters__(self):
         """Formats log messages with colors and additional info."""
-        self.file_formatter = LoggerFormatter(colors=False, **self.flags,old=self.file_formatter)
-        self.formatter = LoggerFormatter(colors=True, **self.flags,old=self.formatter)
+        self.file_formatter = LoggerFormatter(
+            colors=False, **self.flags, old=self.file_formatter
+        )
+        self.formatter = LoggerFormatter(colors=True, **self.flags, old=self.formatter)
 
         if self.console_handler is not None:
             self.logger.removeHandler(self.console_handler)

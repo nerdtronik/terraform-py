@@ -1,6 +1,8 @@
 import sys
+
 sys.path.append("..")
 from typing import Any, Callable, Dict, List, Optional
+
 
 class TerraformResult:
     def __init__(self, success: bool, result: Any):
@@ -10,8 +12,6 @@ class TerraformResult:
 
     def __str__(self):
         return f"TerraformResult(success={self.success}, result_len={len(str(self.result))})"
-
-
 
 
 class Terraform:
@@ -47,7 +47,7 @@ class Terraform:
         result = tf.apply(auto_approve=True)
         ```
     """
-     
+
     chdir: str
     __version__: Dict
     __lock__: bool
@@ -57,8 +57,7 @@ class Terraform:
     __paralellism__: int
     __color__: bool
     __var_file__: str
-    __version__:dict
-    __planfile__:str
+    __planfile__: str
 
     def version(self, quiet: Optional[bool] = False) -> TerraformResult:
         """
