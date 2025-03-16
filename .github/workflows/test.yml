@@ -14,10 +14,6 @@ jobs:
       - name: ⬇️ Checkout code
         uses: actions/checkout@v4
 
-      - name: 📦 Setup Terraform ${{ matrix.tf-version }}
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ matrix.tf-version }}
       - name: 📦 Setup uv
         uses: astral-sh/setup-uv@v3
 
@@ -32,7 +28,11 @@ jobs:
         run: tox run -vv --notest --skip-missing-interpreters false
         env:
           TOX_GH_MAJOR_MINOR: ${{ matrix.python-version }}
-
+          
+      - name: 📦 Setup Terraform ${{ matrix.tf-version }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.tf-version }}
       - name: 🧪 Run test suite
         run: tox run --skip-pkg-install
         env:
