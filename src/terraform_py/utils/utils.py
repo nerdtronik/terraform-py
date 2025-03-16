@@ -1,10 +1,13 @@
+import sys
+sys.path.append("..")
+
 import os
 import shlex
 import subprocess
 from time import time
 from typing import Any, Callable, List, Optional, Union
 
-from .exceptions import CommandError
+from ..classes import CommandError
 from .logger import log
 
 
@@ -19,6 +22,8 @@ def split_array_by_value(array: List[str], split_value: str) -> List[List[str]]:
     Returns:
         A list of subarrays, split at each occurrence of the split_value
     """
+    if not split_value in array:
+        return array
     result = []
     current_sub_array = []
     for element in array:
@@ -30,6 +35,7 @@ def split_array_by_value(array: List[str], split_value: str) -> List[List[str]]:
             current_sub_array.append(element)
     if current_sub_array:
         result.append(current_sub_array)
+
     return result
 
 
@@ -81,7 +87,7 @@ class CommandResult:
         callback_output: Any,
         line_callback_output: List[Any],
         start_time: float = time(),
-        result: Optional[Any] = None
+        result: Optional[Any] = None,
     ):
         self.success = success
         self.code = code
@@ -100,8 +106,7 @@ class CommandResult:
     def raise_for_status(self) -> None:
         """Raise an exception if the command failed."""
         if not self.success:
-            raise CommandError("Command failed", self.code,
-                               self.stdout, self.stderr)
+            raise CommandError("Command failed", self.code, self.stdout, self.stderr)
 
 
 def run_command(
@@ -131,6 +136,8 @@ def run_command(
         CommandResult object containing execution results
     """
     start_time = time()
+    print(cmd)
+    cmd = split_array_by_value(cmd, "|")
     # Prepare environment variables
     process_env = os.environ.copy()
     if env:
@@ -138,13 +145,14 @@ def run_command(
 
     if show_output:
         if len(title) > 0:
-            log.info(f"Running: {title}")
+            log.info(f"Running: {title}", start_sub=True)
             log.debug(f"Command: {cmd}")
         if cwd != ".":
             log.info(f"Working directory: {cwd}")
 
     try:
         if isinstance(cmd[0], list):
+            print(cmd)
             cmd[0] = clean_command(cmd[0])
             proc = subprocess.Popen(
                 cmd[0],
@@ -178,8 +186,7 @@ def run_command(
     except FileNotFoundError as e:
         raise CommandError(e.strerror, 127, "", f"Command not found: {e}")
     except Exception as e:
-        raise CommandError(e.with_traceback(),
-                           proc.returncode, "", proc.stderr.read())
+        raise CommandError(e.with_traceback(), proc.returncode, "", proc.stderr.read())
 
     stdout = ""
     stderr = ""
@@ -206,13 +213,13 @@ def run_command(
                 # No need to decode since we're using text mode
                 stderr += error_line
                 if show_output:
-                    log.error(error_line.strip())
+                    log.error(error_line.rstrip())
 
             if line:
                 # No need to decode since we're using text mode
                 stdout += line
                 if show_output:
-                    log.info(line.strip())
+                    log.info(line.rstrip())
 
             if line_callback:
                 try:
@@ -229,7 +236,7 @@ def run_command(
                 res_callback = callback(stdout, stderr)
             except Exception as e:
                 log.error(e)
-        
+
         return CommandResult(
             proc.returncode == 0,
             proc.returncode,
@@ -253,6 +260,7 @@ def run_command(
         proc.kill()
         log.error(f"Exception during command execution: {str(e)}")
         import json
+
         raise CommandError(
             json.dumps(e.args),
             -1,
