@@ -5,7 +5,7 @@ on:
       - main
 jobs:
   test:
-    uses: .github/workflows/test.yml@main
+    uses: ./.github/workflows/test.yml@main
 
   build-and-verify:
     name: 🔨 Build and Validate
