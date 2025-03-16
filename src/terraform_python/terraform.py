@@ -19,7 +19,7 @@ class Terraform:
 
     def __init__(
         self,
-        workspace: Optional[str] = "default",
+        workspace: str = "default",
         chdir: Optional[str] = None,
         lock: Optional[bool] = True,
         lock_timeout: Optional[str] = "0s",
@@ -66,7 +66,6 @@ class Terraform:
                 result.duration,
             )
         version = _json.loads(result.stdout)
-        print(version)
         version_str = version["terraform_version"]
 
         version_dict = VERSION_REGEX.match(version_str)
@@ -80,7 +79,7 @@ class Terraform:
             "version": version_dict,
             "version_str": version_str,
             "latest": version["terraform_outdated"] == False,
-            "platform": version["platform"],
+            "platform": version["platform"] if "platform" in version else "unknow",
         }
         self.__version__ = res
         if not quiet:

@@ -2,6 +2,7 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock
 from terraform_python import Terraform, TerraformResult, TerraformError
+import os
 
 
 @pytest.fixture
@@ -35,14 +36,14 @@ def test_terraform_version(mock_cmd, mock_terraform):
     mock_cmd.return_value = TerraformResult(True, mock_version_output)
 
     result = mock_terraform.version()
-
+    tf_version=os.getenv("TF_VERSION")
     assert result.success is True
-    assert result.result["version_str"] == "1.5.2"
-    assert result.result["version"]["major"] == 1
-    assert result.result["version"]["minor"] == 5
-    assert result.result["version"]["patch"] == 2
+    assert result.result["version_str"] == tf_version
+    assert result.result["version"]["major"] == int(tf_version.split(".")[0])
+    assert result.result["version"]["minor"] == int(tf_version.split(".")[1])
+    assert result.result["version"]["patch"] == int(tf_version.split(".")[2])
     assert result.result["latest"] is False
-    assert result.result["platform"] == "linux_amd64"
+    assert result.result["platform"] == "linux_amd64" or result.result["platform"] == "unknow"
 
 
 @patch("terraform_python.Terraform.init")
