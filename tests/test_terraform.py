@@ -33,7 +33,7 @@ def test_terraform_version(mock_cmd, mock_terraform):
     #     "platform": "linux_amd64",
     # }
 
-    # mock_cmd.return_value = TerraformResult(True, mock_version_output)
+    mock_cmd.return_value = TerraformResult(True, mock_terraform.version())
 
     result = mock_terraform.version()
     tf_version = os.getenv("TF_VERSION")
