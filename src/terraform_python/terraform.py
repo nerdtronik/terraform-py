@@ -66,6 +66,7 @@ class Terraform:
                 result.duration,
             )
         version = _json.loads(result.stdout)
+        print(version)
         version_str = version["terraform_version"]
 
         version_dict = VERSION_REGEX.match(version_str)
